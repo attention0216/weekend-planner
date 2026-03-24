@@ -4,6 +4,7 @@
 /* ======================================================
  * 全局设计系统 — Laper AI 有机极简主义
  * 自然绿色调 · Montserrat · 极致细腻阴影 · 纸张质感
+ * 桌面 + 安卓完美适配
  * ====================================================== */
 
 @theme {
@@ -39,6 +40,10 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  /* 安卓：防止 300ms 点击延迟 */
+  touch-action: manipulation;
+  /* 安卓：防止双指缩放 */
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
@@ -48,6 +53,10 @@ body {
   background: var(--color-bg);
   margin: 0;
   letter-spacing: -0.01em;
+  /* 安卓：防止 overscroll 拉出背景色 */
+  overscroll-behavior: none;
+  /* 桌面：更好的选择效果 */
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* ── 隐藏滚动条 ── */
@@ -80,7 +89,7 @@ body {
   animation: fade-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* ── 微光效果 ── */
+/* ── 微光效果（骨架屏） ── */
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
@@ -91,4 +100,40 @@ body {
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
   border-radius: 8px;
+}
+
+/* ── 桌面端：更宽的布局 + hover 效果 ── */
+@media (min-width: 768px) {
+  /* 桌面端卡片悬停提升效果 */
+  .shadow-card {
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+  }
+  .shadow-card:hover {
+    box-shadow: 0 4px 16px 0 #10161a0f, 0 1px 3px 0 #10161a0a;
+    transform: translateY(-1px);
+  }
+}
+
+/* ── 安卓：软键盘弹出时的布局修复 ── */
+@supports (height: 100dvh) {
+  .h-dynamic-screen {
+    height: 100dvh;
+  }
+}
+
+/* ── 焦点可见样式（键盘导航） ── */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── 按钮基础 touch 反馈 ── */
+button, a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ── 安全区域 padding ── */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0);
 }

@@ -1,9 +1,11 @@
 from __future__ import annotations
 """
 周末去哪玩 — API 入口
+用户画像 · 日程编排 · 对话调整 · 活动聚合
 """
 import logging
 from contextlib import asynccontextmanager
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,7 +32,6 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("数据库初始化完成")
 
-    # 首次聚合放入后台任务，不阻塞启动
     import asyncio
     if count_activities() == 0:
         logger.info("数据库为空，后台执行首次聚合...")
@@ -52,11 +53,11 @@ async def lifespan(app: FastAPI):
         scheduler.shutdown()
 
 
-app = FastAPI(title="周末去哪玩", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="周末去哪玩", version="2.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:4173"],
+    allow_origins=["http://localhost:5173", "http://localhost:4173", "http://localhost:3000"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -64,13 +65,40 @@ app.add_middleware(
 
 # ── 请求模型 ──
 
+class UserProfile(BaseModel):
+    diet: list[str] = []
+    social: str = ""
+    budget: str = "经济"
+    customNote: str = ""
+
+
 class PlanRequest(BaseModel):
     activity_id: str
+    user_profile: Optional[UserProfile] = None
+
 
 class ChatRequest(BaseModel):
     activity_id: str
     message: str
     current_plan: list[dict] = []
+    user_profile: Optional[UserProfile] = None
+
+
+def _profile_to_hint(profile: Optional[UserProfile]) -> str:
+    """将用户画像转为 LLM prompt 片段"""
+    if not profile:
+        return ""
+    parts = []
+    if profile.diet:
+        parts.append(f"饮食需求：{', '.join(profile.diet)}")
+    if profile.social:
+        parts.append(f"社交偏好：{profile.social}")
+    if profile.budget:
+        budget_map = {"经济": "人均30元以内", "适中": "人均30-80元", "不限": "不限预算"}
+        parts.append(f"预算：{budget_map.get(profile.budget, profile.budget)}")
+    if profile.customNote:
+        parts.append(f"其他：{profile.customNote}")
+    return "\n".join(parts) if parts else ""
 
 
 # ── 路由 ──
@@ -103,6 +131,8 @@ async def api_create_plan(req: PlanRequest):
     if not activity:
         raise HTTPException(status_code=404, detail="活动不存在")
 
+    profile_hint = _profile_to_hint(req.user_profile)
+
     # 1. 地理编码
     coords = None
     if activity.get("latitude") and activity.get("longitude"):
@@ -118,10 +148,13 @@ async def api_create_plan(req: PlanRequest):
         spots = await search_nearby_pois(lat, lng, "景点|商圈|公园", 3000)
 
     # 3. 小红书餐厅推荐
-    xhs_restaurants = await search_xiaohongshu_restaurants(activity.get("location", ""))
+    xhs_restaurants = await search_xiaohongshu_restaurants(
+        activity.get("location", ""),
+        profile_hint,
+    )
 
-    # 4. LLM 编排日程
-    schedule = await generate_plan(activity, restaurants, spots, xhs_restaurants)
+    # 4. LLM 编排日程（传入用户画像）
+    schedule = await generate_plan(activity, restaurants, spots, xhs_restaurants, profile_hint)
 
     return {
         "activity": activity,
@@ -141,7 +174,10 @@ async def api_chat(req: ChatRequest):
     activity = get_activity(req.activity_id)
     if not activity:
         raise HTTPException(status_code=404, detail="活动不存在")
-    reply, new_schedule = await generate_chat_response(activity, req.current_plan, req.message)
+    profile_hint = _profile_to_hint(req.user_profile)
+    reply, new_schedule = await generate_chat_response(
+        activity, req.current_plan, req.message, profile_hint
+    )
     return {"reply": reply, "schedule": new_schedule}
 
 
@@ -149,6 +185,57 @@ async def api_chat(req: ChatRequest):
 async def api_refresh():
     count = await run_aggregation()
     return {"refreshed": count, "total": count_activities()}
+
+
+class NearbyRequest(BaseModel):
+    latitude: float
+    longitude: float
+    user_profile: Optional[UserProfile] = None
+
+
+@app.post("/api/nearby")
+async def api_nearby(req: NearbyRequest):
+    """基于用户定位，推荐附近活动和餐厅"""
+    profile_hint = _profile_to_hint(req.user_profile)
+
+    # 1. 高德逆地理编码 → 获取位置名
+    location_name = ""
+    try:
+        from config import AMAP_KEY
+        if AMAP_KEY:
+            import httpx
+            async with httpx.AsyncClient(timeout=10, proxy=None) as client:
+                resp = await client.get("https://restapi.amap.com/v3/geocode/regeo", params={
+                    "key": AMAP_KEY,
+                    "location": f"{req.longitude},{req.latitude}",
+                })
+                data = resp.json()
+                rc = data.get("regeocode", {}).get("addressComponent", {})
+                location_name = rc.get("township", "") or rc.get("district", "") or rc.get("city", "")
+    except Exception as e:
+        logger.warning(f"逆地理编码失败: {e}")
+
+    # 2. 附近餐厅
+    restaurants = await search_nearby_pois(req.latitude, req.longitude, "餐厅|快餐|面馆|小吃", 2000)
+
+    # 3. 附近景点/活动
+    spots = await search_nearby_pois(req.latitude, req.longitude, "景点|公园|展览|博物馆|商圈", 3000)
+
+    # 4. 小红书餐厅推荐
+    xhs_restaurants = []
+    if location_name:
+        xhs_restaurants = await search_xiaohongshu_restaurants(location_name, profile_hint)
+
+    return {
+        "location_name": location_name or "你的位置",
+        "nearby_restaurants": xhs_restaurants[:5] if xhs_restaurants else [
+            {"name": r["name"], "cuisine": "", "per_capita": int(r["cost"] or 0),
+             "rating": float(r["rating"] or 0), "reason": f"距离{r['distance']}m",
+             "tags": [], "distance_desc": f"{r['distance']}m"}
+            for r in restaurants[:5]
+        ],
+        "nearby_spots": spots[:5],
+    }
 
 
 # ── 静态文件服务 ──

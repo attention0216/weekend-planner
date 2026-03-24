@@ -92,7 +92,7 @@ async def search_nearby_pois(lat: float, lng: float, keyword: str = "餐厅", ra
 #  小红书餐厅推荐（Tavily 搜索 + LLM 结构化）
 # ======================================================
 
-async def search_xiaohongshu_restaurants(location: str) -> list[dict]:
+async def search_xiaohongshu_restaurants(location: str, profile_hint: str = "") -> list[dict]:
     """搜索小红书上关于该地点附近的餐厅推荐，用 LLM 结构化"""
     if not TAVILY_API_KEY and not LLM_API_KEY:
         return []
@@ -126,11 +126,15 @@ async def search_xiaohongshu_restaurants(location: str) -> list[dict]:
 
     client = AsyncOpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
 
+    profile_section = ""
+    if profile_hint:
+        profile_section = f"\n## 用户偏好（务必满足）\n{profile_hint}\n"
+
     prompt = f"""你是一个北京美食达人。根据以下小红书搜索结果和你的知识，推荐 {location} 附近的真实餐厅。
 
 ## 小红书搜索结果
 {xhs_context}
-
+{profile_section}
 ## 要求
 1. 推荐 5 家**真实存在的**餐厅
 2. 优先推荐小红书上有评价的、口碑好的餐厅
@@ -170,12 +174,16 @@ JSON 数组：
 #  日程规划
 # ======================================================
 
-async def generate_plan(activity: dict, nearby_restaurants: list, nearby_spots: list, xhs_restaurants: list) -> list[dict]:
+async def generate_plan(activity: dict, nearby_restaurants: list, nearby_spots: list, xhs_restaurants: list, profile_hint: str = "") -> list[dict]:
     """LLM 生成配套日程"""
     if not LLM_API_KEY:
         return _fallback_plan(activity)
 
     client = AsyncOpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
+
+    profile_section = ""
+    if profile_hint:
+        profile_section = f"\n## 用户偏好（务必满足，这是关键需求）\n{profile_hint}\n"
 
     prompt = f"""你是一个周末出行规划师。用户选了一个活动作为当天的主活动，请为他规划完整的一天。
 
@@ -193,7 +201,7 @@ async def generate_plan(activity: dict, nearby_restaurants: list, nearby_spots: 
 
 ## 附近景点/商圈
 {json.dumps(nearby_spots[:5], ensure_ascii=False, indent=2)}
-
+{profile_section}
 ## 要求
 1. 围绕主活动编排整天日程
 2. 餐厅优先选小红书推荐的，没有则从高德 POI 选
@@ -222,12 +230,16 @@ type 只能是 lunch/dinner/activity/explore。只返回 JSON。"""
         return _fallback_plan(activity)
 
 
-async def generate_chat_response(activity: dict, current_plan: list, user_message: str) -> tuple[str, list[dict]]:
+async def generate_chat_response(activity: dict, current_plan: list, user_message: str, profile_hint: str = "") -> tuple[str, list[dict]]:
     """LLM 对话调整日程"""
     if not LLM_API_KEY:
         return f"收到你的调整意见：「{user_message}」。请配置 LLM API Key 后生效。", current_plan
 
     client = AsyncOpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
+
+    profile_section = ""
+    if profile_hint:
+        profile_section = f"\n## 用户偏好（务必满足）\n{profile_hint}\n"
 
     prompt = f"""你是一个周末出行规划师。用户已有日程，现在想调整。
 
@@ -237,7 +249,7 @@ async def generate_chat_response(activity: dict, current_plan: list, user_messag
 ## 主活动
 - 名称：{activity['title']}
 - 地点：{activity.get('location', '')}
-
+{profile_section}
 ## 用户要求
 {user_message}
 

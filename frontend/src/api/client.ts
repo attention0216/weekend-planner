@@ -4,6 +4,7 @@
  * ====================================================== */
 
 import type { Activity, Plan } from "../types"
+import { loadProfile } from "../pages/ProfilePage"
 
 const BASE = "/api"
 
@@ -58,9 +59,10 @@ export const api = {
   },
 
   createPlan(activityId: string, signal?: AbortSignal): Promise<Plan> {
+    const profile = loadProfile()
     return request("/plan", {
       method: "POST",
-      body: JSON.stringify({ activity_id: activityId }),
+      body: JSON.stringify({ activity_id: activityId, user_profile: profile }),
       timeout: 120000,
       signal,
     })
@@ -70,9 +72,10 @@ export const api = {
     reply: string
     schedule: Plan["schedule"]
   }> {
+    const profile = loadProfile()
     return request("/chat", {
       method: "POST",
-      body: JSON.stringify({ activity_id: activityId, message, current_plan: currentPlan }),
+      body: JSON.stringify({ activity_id: activityId, message, current_plan: currentPlan, user_profile: profile }),
       timeout: 90000,
       signal,
     })
@@ -80,5 +83,18 @@ export const api = {
 
   refresh(): Promise<{ refreshed: number; total: number }> {
     return request("/refresh", { method: "POST", timeout: 120000 })
+  },
+
+  nearby(lat: number, lng: number): Promise<{
+    location_name: string
+    nearby_restaurants: Plan["nearby_restaurants"]
+    nearby_spots: Plan["nearby_spots"]
+  }> {
+    const profile = loadProfile()
+    return request("/nearby", {
+      method: "POST",
+      body: JSON.stringify({ latitude: lat, longitude: lng, user_profile: profile }),
+      timeout: 60000,
+    })
   },
 }

@@ -1,13 +1,14 @@
 /* ======================================================
  * 根组件 — Laper AI 风格布局
- * ErrorBoundary · 响应式 · 安全区域
+ * ErrorBoundary · 响应式 · 安全区域 · 底部导航
  * ====================================================== */
 
 import { Component, type ReactNode } from "react"
-import { BrowserRouter, Routes, Route } from "react-router"
+import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router"
 import { DiscoverPage } from "./pages/DiscoverPage"
 import { PlanPage } from "./pages/PlanPage"
 import { ChatPage } from "./pages/ChatPage"
+import { ProfilePage } from "./pages/ProfilePage"
 
 /* ── 错误边界：防止白屏 ── */
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -43,6 +44,53 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   }
 }
 
+/* ── 底部导航 ── */
+function BottomNav() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const path = location.pathname
+
+  /* 详情页/聊天页不显示底部导航 */
+  if (path.startsWith("/plan/") || path.startsWith("/chat/")) return null
+
+  const tabs = [
+    { path: "/", label: "发现", icon: (active: boolean) => (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? "var(--color-accent)" : "var(--color-t3)"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10"/><path d="m16.24 7.76-2.12 6.36-6.36 2.12 2.12-6.36 6.36-2.12z"/>
+      </svg>
+    )},
+    { path: "/profile", label: "我的", icon: (active: boolean) => (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? "var(--color-accent)" : "var(--color-t3)"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="8" r="4"/><path d="M5 20c0-3.87 3.13-7 7-7s7 3.13 7 7"/>
+      </svg>
+    )},
+  ]
+
+  return (
+    <nav className="fixed bottom-0 left-0 right-0 z-50 glass border-t border-[var(--color-border)]/50 pb-[env(safe-area-inset-bottom)]">
+      <div className="max-w-[680px] mx-auto flex">
+        {tabs.map((tab) => {
+          const active = path === tab.path
+          return (
+            <button
+              key={tab.path}
+              onClick={() => navigate(tab.path)}
+              className="flex-1 flex flex-col items-center gap-0.5 py-2 min-h-[52px]"
+              aria-label={tab.label}
+              aria-current={active ? "page" : undefined}
+            >
+              {tab.icon(active)}
+              <span className={`text-[10px] font-medium ${active ? "text-[var(--color-accent)]" : "text-[var(--color-t3)]"}`}>
+                {tab.label}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </nav>
+  )
+}
+
 function App() {
   return (
     <ErrorBoundary>
@@ -57,14 +105,18 @@ function App() {
             </div>
           </header>
 
-          {/* 内容区 — 桌面宽一点，移动端全宽 */}
+          {/* 内容区 */}
           <main className="max-w-[680px] mx-auto px-5 pt-6 pb-24">
             <Routes>
               <Route path="/" element={<DiscoverPage />} />
               <Route path="/plan/:id" element={<PlanPage />} />
               <Route path="/chat/:id" element={<ChatPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
             </Routes>
           </main>
+
+          {/* 底部导航 */}
+          <BottomNav />
         </div>
       </BrowserRouter>
     </ErrorBoundary>
