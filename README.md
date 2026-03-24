@@ -98,11 +98,12 @@ Tavily 搜索真实北京活动 → LLM 结构化 → SQLite 存储
 weekend-planner/
 ├── frontend/                    # React + Vite + Tailwind v4 (PWA)
 │   └── src/
-│       ├── api/client.ts        # API 客户端（AbortController 超时）
-│       ├── components/          # ActivityCard · CategoryFilter · Timeline
-│       ├── pages/               # DiscoverPage · PlanPage · ChatPage
+│       ├── api/client.ts        # API 客户端（AbortController + 画像注入）
+│       ├── api/planCache.ts     # 日程缓存（内存 + sessionStorage 双层）
+│       ├── components/          # ActivityCard · Timeline · ChatDrawer · CategoryFilter
+│       ├── pages/               # DiscoverPage · PlanPage · ProfilePage · ChatPage
 │       ├── types/               # TypeScript 类型定义
-│       └── index.css            # Laper AI 设计系统 token
+│       └── index.css            # Laper AI 设计系统 + 响应式适配
 ├── backend/                     # FastAPI + SQLite
 │   ├── main.py                  # 路由 + 生命周期（非阻塞首次聚合）
 │   ├── aggregator.py            # Tavily + LLM 活动聚合引擎
@@ -116,7 +117,18 @@ weekend-planner/
 
 ## 版本历史
 
-### V2 (当前)
+### V4 (当前)
+- 内嵌对话抽屉：调整日程不跳页，底部滑出面板即时修改时间线
+- 活动收藏：心形按钮 + localStorage 持久化
+- 底部导航栏：发现 / 我的偏好
+
+### V3
+- 用户画像系统：饮食需求 + 社交偏好 + 预算范围 + 自定义备注
+- 附近推荐：Geolocation API 定位 → 高德逆地理编码 → 附近餐厅/景点
+- 数据真实性：垂直搜索策略（site:douban.com 等）+ URL HEAD 验证
+- 桌面+安卓完美适配：touch-action / overscroll-behavior / safe-area
+
+### V2
 - 健壮 JSON 解析：统一 `_parse_llm_json()` 处理 LLM 返回的 markdown 包裹、格式不规范等问题
 - 非阻塞启动：首次聚合放入后台，API 秒级就绪
 - 前端体验：AbortController 超时控制、骨架屏加载态、动画性能优化
