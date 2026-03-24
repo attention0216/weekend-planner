@@ -1,12 +1,13 @@
 /* ======================================================
  * 日程规划页 — 有机极简风
- * 品牌色 hero · 时间线 · 小红书餐厅推荐
+ * 缓存优先 · AbortController 清理 · 小红书餐厅推荐
  * ====================================================== */
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useParams, useNavigate } from "react-router"
 import { Timeline } from "../components/Timeline"
 import { api } from "../api/client"
+import { getCachedPlan, setCachedPlan } from "../api/planCache"
 import { formatDate } from "../utils"
 import type { Plan } from "../types"
 
@@ -16,15 +17,40 @@ export function PlanPage() {
   const [plan, setPlan] = useState<Plan | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     if (!id) return
+
+    /* ── 缓存命中 → 秒开 ── */
+    const cached = getCachedPlan(id)
+    if (cached) {
+      setPlan(cached)
+      setLoading(false)
+      return
+    }
+
+    /* ── 缓存未命中 → 请求 API ── */
+    abortRef.current?.abort()
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
+
     setLoading(true)
     setError("")
-    api.createPlan(id)
-      .then(setPlan)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false))
+    api.createPlan(id, ctrl.signal)
+      .then((p) => {
+        setPlan(p)
+        setCachedPlan(id, p)
+      })
+      .catch((e) => {
+        if (e instanceof DOMException && e.name === "AbortError") return
+        setError(e.message)
+      })
+      .finally(() => {
+        if (!ctrl.signal.aborted) setLoading(false)
+      })
+
+    return () => ctrl.abort()
   }, [id])
 
   /* ── 加载态：骨架屏 + 进度提示 ── */
@@ -78,6 +104,7 @@ export function PlanPage() {
       <button
         onClick={() => navigate("/")}
         className="self-start text-[13px] text-[var(--color-accent)] font-medium flex items-center gap-1 -ml-1"
+        aria-label="返回活动列表"
       >
         <svg width="7" height="12" viewBox="0 0 7 12" fill="none" className="mt-px">
           <path d="M6 1L1 6L6 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -105,6 +132,20 @@ export function PlanPage() {
             {activity.description}
           </p>
         )}
+        {/* 原链接 */}
+        {activity.url && (
+          <a
+            href={activity.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 mt-3 text-[12px] text-white/60 hover:text-white/90 transition-colors"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M5 1H2a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1V7M7 1h4v4M11 1L5 7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            查看活动详情
+          </a>
+        )}
       </div>
 
       {/* 时间线 */}
@@ -124,7 +165,7 @@ export function PlanPage() {
           <div className="flex flex-col gap-2">
             {nearby_restaurants.slice(0, 4).map((r, i) => (
               <div
-                key={i}
+                key={`${r.name}-${i}`}
                 className="shadow-card bg-[var(--color-bg-card)] rounded-xl p-4 animate-fade-up"
                 style={{ animationDelay: `${i * 60}ms` }}
               >
@@ -149,8 +190,8 @@ export function PlanPage() {
                       人均¥{r.per_capita}
                     </span>
                   )}
-                  {r.tags?.map((tag, j) => (
-                    <span key={j} className="text-[11px] px-2 py-0.5 rounded bg-[var(--color-accent-soft)] text-[var(--color-accent)]">
+                  {r.tags?.map((tag) => (
+                    <span key={tag} className="text-[11px] px-2 py-0.5 rounded bg-[var(--color-accent-soft)] text-[var(--color-accent)]">
                       {tag}
                     </span>
                   ))}
@@ -174,7 +215,7 @@ export function PlanPage() {
           </h3>
           <div className="flex flex-col gap-2">
             {nearby_spots.map((s, i) => (
-              <div key={i} className="shadow-card bg-[var(--color-bg-card)] rounded-xl p-4">
+              <div key={`${s.name}-${i}`} className="shadow-card bg-[var(--color-bg-card)] rounded-xl p-4">
                 <div className="text-[14px] font-semibold text-[var(--color-t1)]">{s.name}</div>
                 <div className="text-[12px] text-[var(--color-t3)] mt-1">{s.distance}m · {s.address}</div>
               </div>
@@ -187,7 +228,7 @@ export function PlanPage() {
       <div className="flex flex-col gap-3 pt-2">
         <button
           onClick={() => navigate(`/chat/${id}`, { state: { schedule, activity } })}
-          className="w-full py-[13px] bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white rounded-xl text-[14px] font-semibold transition-colors duration-200 tracking-[-0.01em]"
+          className="w-full py-[13px] bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white rounded-xl text-[14px] font-semibold transition-colors duration-200 tracking-[-0.01em] active:scale-[0.98]"
         >
           调整日程
         </button>

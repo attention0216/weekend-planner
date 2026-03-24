@@ -1,6 +1,6 @@
 /* ======================================================
  * 活动卡片 — 有机极简风
- * 微阴影 · 紧凑字距 · 自然绿强调
+ * 微阴影 · 紧凑字距 · 自然绿强调 · 原链接
  * ====================================================== */
 
 import type { Activity } from "../types"
@@ -48,12 +48,12 @@ export function ActivityCard({ activity, onPlan }: Props) {
       {/* 信息行 */}
       <div className="flex flex-col gap-1.5 text-[12px] text-[var(--color-t3)] mb-4">
         <div className="flex items-center gap-2">
-          <span className="w-4 text-center text-[11px]">📅</span>
+          <span className="w-4 text-center text-[11px]" aria-hidden="true">📅</span>
           <span>{formatDate(activity.date)}{activity.time ? ` · ${activity.time}` : ""}</span>
         </div>
         {activity.location && (
           <div className="flex items-center gap-2">
-            <span className="w-4 text-center text-[11px]">📍</span>
+            <span className="w-4 text-center text-[11px]" aria-hidden="true">📍</span>
             <span className="truncate">{activity.location}</span>
           </div>
         )}
@@ -61,12 +61,27 @@ export function ActivityCard({ activity, onPlan }: Props) {
 
       {/* 底部 */}
       <div className="flex items-center justify-between pt-3 border-t border-[var(--color-divider)]">
-        <span className="text-[15px] font-semibold tracking-[-0.02em] text-[var(--color-t1)]">
-          {activity.price === 0 ? "免费" : `¥${activity.price}`}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-[15px] font-semibold tracking-[-0.02em] text-[var(--color-t1)]">
+            {activity.price === 0 ? "免费" : `¥${activity.price}`}
+          </span>
+          {/* 原链接 */}
+          {activity.url && (
+            <a
+              href={activity.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[12px] text-[var(--color-accent)] hover:underline"
+              aria-label={`查看${activity.title}详情`}
+            >
+              详情
+            </a>
+          )}
+        </div>
         <button
           onClick={() => onPlan(activity.id)}
-          className="text-[13px] font-medium text-white bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] px-5 py-2 rounded-lg transition-colors duration-200"
+          aria-label={`规划${activity.title}的一天`}
+          className="text-[13px] font-medium text-white bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] px-5 py-2 rounded-lg transition-colors duration-200 min-h-[36px] active:scale-[0.97]"
         >
           规划这一天
         </button>

@@ -1,9 +1,9 @@
 /* ======================================================
  * 活动发现页 — 有机极简风
- * 大标题 · 分类筛选 · 卡片流 · 骨架屏
+ * AbortController 竞态保护 · 骨架屏 · 渐入动画
  * ====================================================== */
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router"
 import { ActivityCard } from "../components/ActivityCard"
 import { CategoryFilter } from "../components/CategoryFilter"
@@ -16,14 +16,29 @@ export function DiscoverPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const navigate = useNavigate()
+  const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
+    /* ── 取消上一次请求，防止竞态 ── */
+    abortRef.current?.abort()
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
+
     setLoading(true)
     setError("")
-    api.listActivities(category)
-      .then(setActivities)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false))
+    api.listActivities(category, ctrl.signal)
+      .then((data) => {
+        if (!ctrl.signal.aborted) setActivities(data)
+      })
+      .catch((e) => {
+        if (e instanceof DOMException && e.name === "AbortError") return
+        setError(e.message)
+      })
+      .finally(() => {
+        if (!ctrl.signal.aborted) setLoading(false)
+      })
+
+    return () => ctrl.abort()
   }, [category])
 
   return (
@@ -63,6 +78,12 @@ export function DiscoverPage() {
       {error && (
         <div className="bg-[#faf2f2] text-[var(--color-error)] text-[13px] rounded-xl p-5 text-center">
           加载失败：{error}
+          <button
+            onClick={() => setCategory(category)}
+            className="block mx-auto mt-3 text-[var(--color-accent)] font-medium"
+          >
+            重试
+          </button>
         </div>
       )}
 
@@ -76,7 +97,7 @@ export function DiscoverPage() {
           <div className="flex flex-col gap-3">
             {activities.map((a, i) => (
               <div key={a.id} className="animate-fade-up" style={{ animationDelay: `${Math.min(i * 60, 300)}ms` }}>
-                <ActivityCard activity={a} onPlan={(id) => navigate(`/plan/${id}`)} />
+                <ActivityCard activity={a} onPlan={(aid) => navigate(`/plan/${aid}`)} />
               </div>
             ))}
           </div>

@@ -1,11 +1,12 @@
 from __future__ import annotations
 """
 活动聚合引擎
-用 LLM + Tavily 搜索发现真实北京周末活动
+Tavily 搜索 + LLM 结构化 + URL 验证 → 真实北京周末活动
 """
 import hashlib
 import json
 import logging
+import re
 from datetime import datetime, timedelta
 
 import httpx
@@ -34,6 +35,25 @@ def _next_weekend() -> tuple[str, str]:
     return sat.strftime("%Y-%m-%d"), sun.strftime("%Y-%m-%d")
 
 
+def _parse_llm_json(text: str):
+    """从 LLM 响应中健壮地提取 JSON"""
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        for pattern in [r"\[[\s\S]*\]", r"\{[\s\S]*\}"]:
+            match = re.search(pattern, text)
+            if match:
+                try:
+                    return json.loads(match.group(0))
+                except json.JSONDecodeError:
+                    continue
+        logger.error(f"无法解析 LLM JSON: {text[:200]}")
+        return None
+
+
 async def _tavily_search(query: str, max_results: int = 5) -> list[dict]:
     """Tavily 搜索"""
     if not TAVILY_API_KEY:
@@ -56,7 +76,35 @@ async def _tavily_search(query: str, max_results: int = 5) -> list[dict]:
     return []
 
 
-async def _llm_discover_activities(web_context: str) -> list[dict]:
+# ======================================================
+#  URL 验证 — 确保活动链接可达
+# ======================================================
+
+async def _verify_url(url: str) -> bool:
+    """HEAD 请求验证 URL 是否可达（3秒超时）"""
+    if not url or not url.startswith("http"):
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=3, proxy=None, follow_redirects=True) as client:
+            resp = await client.head(url)
+            return resp.status_code < 400
+    except Exception:
+        return False
+
+
+async def _verify_activity_urls(activities: list[dict]) -> list[dict]:
+    """批量验证活动 URL，不可达的清空 url 字段"""
+    import asyncio
+    tasks = [_verify_url(a.get("url", "")) for a in activities]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    for a, ok in zip(activities, results):
+        if not ok or isinstance(ok, Exception):
+            a["url"] = ""
+            logger.info(f"URL 验证失败，已清除: [{a.get('title')}] {a.get('url', '')}")
+    return activities
+
+
+async def _llm_discover_activities(web_context: str, tavily_urls: list[str]) -> list[dict]:
     """用 LLM 基于搜索结果生成真实活动数据"""
     if not LLM_API_KEY:
         return []
@@ -64,19 +112,26 @@ async def _llm_discover_activities(web_context: str) -> list[dict]:
     sat, sun = _next_weekend()
     client = AsyncOpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
 
+    # 将 Tavily 搜索到的真实 URL 提供给 LLM
+    url_hint = ""
+    if tavily_urls:
+        url_hint = "\n\n## 搜索到的真实链接（优先使用这些）\n" + "\n".join(f"- {u}" for u in tavily_urls[:20])
+
     prompt = f"""你是一个北京本地生活专家。请基于以下搜索结果和你的知识，生成 {CITY_NAME} 本周末（{sat} 和 {sun}）的真实活动推荐。
 
 ## 搜索到的信息
-{web_context[:3000]}
+{web_context[:3000]}{url_hint}
 
-## 要求
-1. 只推荐**真实存在的**场馆、展览、活动、餐厅和电影
+## 严格要求
+1. **只推荐真实存在的**场馆、展览、活动和电影，禁止编造
 2. 地点必须是真实地址，经纬度必须准确（北京范围：纬度39.4-40.2，经度115.7-117.4）
 3. 覆盖 6 个分类：AI/技术、读书会、电影、景点/展览、美食、活动
 4. 每个分类 2-3 个活动，总共 12-15 个
 5. 电影推荐当前热映或即将上映的真实电影
 6. 展览推荐故宫、国博、UCCA、798 等真实场馆的常设或当期展览
 7. 价格要合理真实
+8. **url 字段**：优先使用搜索结果中的真实链接（上面提供的URL列表），没有的填空字符串，**绝对不要编造 URL**
+9. **source 字段**：填写真实的信息来源（如"故宫博物院官网"、"豆瓣电影"），不要填"AI推荐"
 
 ## 返回格式
 严格返回 JSON 数组，每个元素：
@@ -90,8 +145,8 @@ async def _llm_discover_activities(web_context: str) -> list[dict]:
   "longitude": 116.xxxx,
   "price": 数字,
   "description": "一两句话描述，包含亮点和实用信息",
-  "source": "数据来源（如：故宫博物院官网、猫眼电影、大众点评等）",
-  "url": "相关链接（如果有）"
+  "source": "真实数据来源",
+  "url": "搜索结果中的真实链接，没有则留空"
 }}
 
 只返回 JSON 数组，不要其他文字。"""
@@ -104,17 +159,8 @@ async def _llm_discover_activities(web_context: str) -> list[dict]:
             messages=[{"role": "user", "content": prompt}],
         )
         text = resp.choices[0].message.content.strip()
-        if text.startswith("```"):
-            text = text.split("\n", 1)[1].rsplit("```", 1)[0]
-        # 容错：尝试提取 JSON 数组
-        import re
-        if not text.startswith("["):
-            match = re.search(r"\[[\s\S]*\]", text)
-            if match:
-                text = match.group(0)
-        return json.loads(text)
-    except json.JSONDecodeError as e:
-        logger.error(f"LLM 返回非法 JSON: {e}")
+        result = _parse_llm_json(text)
+        return result if isinstance(result, list) else []
     except Exception as e:
         logger.error(f"LLM 活动发现失败: {e}")
     return []
@@ -134,15 +180,18 @@ async def run_aggregation():
     ]
 
     web_context_parts = []
+    tavily_urls = []
     for q in search_queries:
         results = await _tavily_search(q, max_results=3)
         for r in results:
             web_context_parts.append(f"[{r['title']}] {r['content']}")
+            if r.get("url"):
+                tavily_urls.append(r["url"])
 
     web_context = "\n\n".join(web_context_parts) if web_context_parts else "无搜索结果，请基于你对北京的知识推荐。"
 
-    # 2. LLM 生成结构化活动数据
-    activities = await _llm_discover_activities(web_context)
+    # 2. LLM 生成结构化活动数据（传入真实 URL 供引用）
+    activities = await _llm_discover_activities(web_context, tavily_urls)
 
     # 3. 降级：LLM 也失败时用种子数据
     if not activities:
@@ -150,12 +199,21 @@ async def run_aggregation():
         from seed_data import get_seed_activities
         activities = get_seed_activities()
 
-    # 4. 写入数据库
+    # 4. 验证 URL 真实性 — HTTP HEAD 检查链接是否可达
+    activities = await _verify_activity_urls(activities)
+
+    # 5. 写入数据库（去重）
     saved = 0
+    seen_ids = set()
     for a in activities:
         try:
+            aid = _make_id(a.get("source", "llm"), a["title"])
+            if aid in seen_ids:
+                continue
+            seen_ids.add(aid)
+
             activity = {
-                "id": _make_id(a.get("source", "llm"), a["title"]),
+                "id": aid,
                 "title": a["title"],
                 "category": a.get("category", "活动"),
                 "date": a.get("date", _next_weekend()[0]),
@@ -164,7 +222,7 @@ async def run_aggregation():
                 "latitude": a.get("latitude"),
                 "longitude": a.get("longitude"),
                 "price": a.get("price", 0),
-                "source": a.get("source", "AI 推荐"),
+                "source": a.get("source", ""),
                 "url": a.get("url", ""),
                 "image": a.get("image"),
                 "description": a.get("description", ""),
