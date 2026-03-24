@@ -174,8 +174,8 @@ JSON 数组：
 #  日程规划
 # ======================================================
 
-async def generate_plan(activity: dict, nearby_restaurants: list, nearby_spots: list, xhs_restaurants: list, profile_hint: str = "") -> list[dict]:
-    """LLM 生成配套日程"""
+async def generate_plan(activity: dict, nearby_restaurants: list, nearby_spots: list, xhs_restaurants: list, profile_hint: str = "", metro_stations: list | None = None) -> list[dict]:
+    """LLM 生成配套日程（含回程规划）"""
     if not LLM_API_KEY:
         return _fallback_plan(activity)
 
@@ -184,6 +184,11 @@ async def generate_plan(activity: dict, nearby_restaurants: list, nearby_spots: 
     profile_section = ""
     if profile_hint:
         profile_section = f"\n## 用户偏好（务必满足，这是关键需求）\n{profile_hint}\n"
+
+    metro_section = ""
+    if metro_stations:
+        metro_info = json.dumps(metro_stations[:5], ensure_ascii=False, indent=2)
+        metro_section = f"\n## 附近地铁站\n{metro_info}\n"
 
     prompt = f"""你是一个周末出行规划师。用户选了一个活动作为当天的主活动，请为他规划完整的一天。
 
@@ -201,19 +206,23 @@ async def generate_plan(activity: dict, nearby_restaurants: list, nearby_spots: 
 
 ## 附近景点/商圈
 {json.dumps(nearby_spots[:5], ensure_ascii=False, indent=2)}
-{profile_section}
+{metro_section}{profile_section}
 ## 要求
 1. 围绕主活动编排整天日程
 2. 餐厅优先选小红书推荐的，没有则从高德 POI 选
 3. 推荐理由要具体、有温度（不要泛泛而谈）
-4. 返回 JSON 数组：
+4. **必须以"回程"结尾**：最后一项 type 为 commute，提醒用户赶地铁
+5. **回程约束**：用户需要在 24:00 前到家，北京地铁末班车一般 22:30-23:00，请根据附近地铁站倒推出发时间
+6. commute 项的 name 填最近地铁站名，reason 说明末班车时间和建议出发时间，location 填地铁站地址
+7. 返回 JSON 数组：
 [
   {{"time": "11:30", "type": "lunch", "name": "餐厅名", "reason": "推荐理由", "location": "具体地址"}},
   {{"time": "14:00", "type": "activity", "name": "活动名", "reason": "主活动", "location": "活动地址"}},
   {{"time": "18:00", "type": "dinner", "name": "餐厅名", "reason": "推荐理由", "location": "具体地址"}},
-  {{"time": "20:00", "type": "explore", "name": "地点名", "reason": "推荐理由", "location": "具体地址"}}
+  {{"time": "20:00", "type": "explore", "name": "地点名", "reason": "推荐理由", "location": "具体地址"}},
+  {{"time": "22:00", "type": "commute", "name": "XX地铁站", "reason": "末班车约22:30，建议提前到站", "location": "地铁站地址"}}
 ]
-type 只能是 lunch/dinner/activity/explore。location 必须填具体地址。只返回 JSON。"""
+type 只能是 lunch/dinner/activity/explore/commute。location 必须填具体地址。只返回 JSON。"""
 
     try:
         resp = await client.chat.completions.create(
@@ -255,7 +264,7 @@ async def generate_chat_response(activity: dict, current_plan: list, user_messag
 
 ## 返回格式
 {{"reply": "你的回应（简洁温暖）", "schedule": [...]}}
-schedule 格式同之前。只返回 JSON。"""
+schedule 格式同之前（type: lunch/dinner/activity/explore/commute）。必须保留 commute 回程项。只返回 JSON。"""
 
     try:
         resp = await client.chat.completions.create(
@@ -281,4 +290,5 @@ def _fallback_plan(activity: dict) -> list[dict]:
         {"time": "13:30", "type": "activity", "name": activity["title"], "reason": "主活动"},
         {"time": "17:30", "type": "dinner", "name": "活动地点附近餐厅", "reason": "请配置 API Key 获取真实推荐"},
         {"time": "19:30", "type": "explore", "name": "附近逛逛", "reason": "请配置 API Key 获取真实推荐"},
+        {"time": "21:30", "type": "commute", "name": "最近地铁站", "reason": "末班车约22:30，建议提前出发"},
     ]

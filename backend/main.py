@@ -142,28 +142,29 @@ async def api_create_plan(req: PlanRequest):
     elif activity.get("location"):
         coords = await geocode(activity["location"])
 
-    # 2. 并行执行：高德 POI + 小红书推荐（不等前一个完成）
+    # 2. 并行执行：高德 POI + 小红书推荐 + 地铁站（不等前一个完成）
     async def get_pois():
         if not coords:
-            return [], []
+            return [], [], []
         lat, lng = coords
-        r, s = await asyncio.gather(
+        r, s, m = await asyncio.gather(
             search_nearby_pois(lat, lng, "餐厅", 2000),
             search_nearby_pois(lat, lng, "景点|商圈|公园", 3000),
+            search_nearby_pois(lat, lng, "地铁站", 3000),
         )
-        return r, s
+        return r, s, m
 
     async def get_xhs():
         return await search_xiaohongshu_restaurants(
             activity.get("location", ""), profile_hint
         )
 
-    (restaurants, spots), xhs_restaurants = await asyncio.gather(
+    (restaurants, spots, metro_stations), xhs_restaurants = await asyncio.gather(
         get_pois(), get_xhs()
     )
 
-    # 3. LLM 编排日程
-    schedule = await generate_plan(activity, restaurants, spots, xhs_restaurants, profile_hint)
+    # 3. LLM 编排日程（含回程规划）
+    schedule = await generate_plan(activity, restaurants, spots, xhs_restaurants, profile_hint, metro_stations)
 
     return {
         "activity": activity,

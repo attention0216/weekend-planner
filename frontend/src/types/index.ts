@@ -22,7 +22,7 @@ export interface Activity {
 
 export interface ScheduleItem {
   time: string
-  type: "lunch" | "dinner" | "activity" | "explore"
+  type: "lunch" | "dinner" | "activity" | "explore" | "commute"
   name: string
   reason: string
   location?: string

@@ -16,6 +16,7 @@ const typeConfig: Record<string, { icon: string; color: string; label: string }>
   dinner:   { icon: "🍽️", color: "bg-[#c75c5c]", label: "晚餐" },
   activity: { icon: "🎯", color: "bg-[var(--color-accent)]", label: "主活动" },
   explore:  { icon: "🚶", color: "bg-[var(--color-tech-green)]", label: "探索" },
+  commute:  { icon: "🚇", color: "bg-[#5b7bb5]", label: "回程" },
 }
 
 /* ── 高德导航 URI（步行模式，从当前位置出发） ── */
