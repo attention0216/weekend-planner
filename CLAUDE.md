@@ -6,12 +6,23 @@
 
 ```
 weekend-planner/
-├── frontend/          # React + Vite + Tailwind (PWA)
+├── frontend/                # React + Vite + Tailwind (PWA)
 │   └── src/
-│       ├── App.tsx    # 根组件，页面路由入口
-│       └── main.tsx   # 应用挂载点
-├── backend/           # FastAPI + SQLite
-│   ├── main.py        # API 入口，路由定义
+│       ├── App.tsx          # 根组件，BrowserRouter 路由定义
+│       ├── main.tsx         # 应用挂载点
+│       ├── index.css        # Tailwind v4 入口
+│       ├── types/
+│       │   └── index.ts     # Activity, ScheduleItem, Plan, Category
+│       ├── components/
+│       │   ├── ActivityCard.tsx    # 活动卡片（分类标签+信息+规划按钮）
+│       │   ├── CategoryFilter.tsx # 分类横滚筛选栏
+│       │   └── Timeline.tsx       # 垂直时间线（日程可视化）
+│       └── pages/
+│           ├── DiscoverPage.tsx   # 活动发现：卡片列表+筛选
+│           ├── PlanPage.tsx       # 日程规划：锚点活动+时间线+地图链接
+│           └── ChatPage.tsx       # 对话调整：聊天UI微调日程
+├── backend/                 # FastAPI + SQLite
+│   ├── main.py              # API 入口，路由定义
 │   └── requirements.txt
 └── .gitignore
 ```
