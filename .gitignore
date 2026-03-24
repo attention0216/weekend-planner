@@ -8,6 +8,10 @@ venv/
 # 构建产物
 dist/
 build/
+backend/static/
+
+# 数据库
+backend/data/
 
 # 环境变量
 .env

@@ -3,10 +3,8 @@
  * 所有模块共享的类型定义，单一真相源
  * ====================================================== */
 
-// 活动分类
-export type Category = "AI" | "读书会" | "电影" | "景点" | "美食" | "全部"
+export type Category = "AI" | "读书会" | "电影" | "景点" | "美食" | "活动" | "全部"
 
-// 活动条目
 export interface Activity {
   id: string
   title: string
@@ -14,12 +12,15 @@ export interface Activity {
   date: string
   time: string
   location: string
+  latitude: number | null
+  longitude: number | null
   price: number
   source: string
+  url: string
   image: string | null
+  description: string
 }
 
-// 日程项
 export interface ScheduleItem {
   time: string
   type: "lunch" | "dinner" | "activity" | "explore"
@@ -27,8 +28,20 @@ export interface ScheduleItem {
   reason: string
 }
 
-// 配套日程
 export interface Plan {
-  activity_id: string
+  activity: Activity
   schedule: ScheduleItem[]
+  nearby_restaurants: Array<{
+    name: string
+    address: string
+    rating: string
+    cost: string
+    distance: string
+  }>
+  nearby_spots: Array<{
+    name: string
+    address: string
+    type: string
+    distance: string
+  }>
 }
