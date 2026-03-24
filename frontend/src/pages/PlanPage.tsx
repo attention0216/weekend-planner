@@ -327,12 +327,15 @@ export function PlanPage() {
 
           {activity.location && (
             <a
-              href={`https://uri.amap.com/search?keyword=${encodeURIComponent(activity.location)}`}
+              href={`https://uri.amap.com/navigation?to=0,0,${encodeURIComponent(activity.location)}&mode=walk&callnative=1`}
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full py-[13px] bg-[var(--color-bg-dim)] text-[var(--color-accent)] rounded-xl text-[14px] font-medium text-center block transition-colors duration-200 hover:bg-[var(--color-border)]"
+              className="w-full py-[13px] bg-[var(--color-bg-dim)] text-[var(--color-accent)] rounded-xl text-[14px] font-medium text-center flex items-center justify-center gap-2 transition-colors duration-200 hover:bg-[var(--color-border)]"
             >
-              在高德地图中查看
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 11l19-9-9 19-2-8-8-2z" />
+              </svg>
+              导航到活动地点
             </a>
           )}
         </div>

@@ -1,6 +1,6 @@
 /* ======================================================
- * 时间线组件 — 精致垂直连线
- * 每项可点击查看地图 · 可展开详情
+ * 时间线组件 — 精致垂直连线 + 一键导航
+ * 展开详情 · 导航到这里 · 下一站快捷导航
  * ====================================================== */
 
 import { useState } from "react"
@@ -18,6 +18,18 @@ const typeConfig: Record<string, { icon: string; color: string; label: string }>
   explore:  { icon: "🚶", color: "bg-[var(--color-tech-green)]", label: "探索" },
 }
 
+/* ── 高德导航 URI（步行模式，从当前位置出发） ── */
+function navUrl(item: ScheduleItem): string {
+  const dest = item.location || item.name
+  return `https://uri.amap.com/navigation?to=0,0,${encodeURIComponent(dest)}&mode=walk&callnative=1`
+}
+
+/* ── 高德搜索 URI ── */
+function searchUrl(item: ScheduleItem): string | null {
+  const kw = item.location || item.name
+  return kw ? `https://uri.amap.com/search?keyword=${encodeURIComponent(kw)}` : null
+}
+
 export function Timeline({ items, activityUrl }: Props) {
   const [expanded, setExpanded] = useState<number | null>(null)
 
@@ -30,11 +42,7 @@ export function Timeline({ items, activityUrl }: Props) {
         const cfg = typeConfig[item.type] ?? { icon: "📌", color: "bg-[var(--color-t3)]", label: "其他" }
         const isMain = item.type === "activity"
         const isExpanded = expanded === i
-        const mapUrl = item.location
-          ? `https://uri.amap.com/search?keyword=${encodeURIComponent(item.location)}`
-          : item.name
-            ? `https://uri.amap.com/search?keyword=${encodeURIComponent(item.name)}`
-            : null
+        const nextItem = items[i + 1]
 
         return (
           <div key={`${item.time}-${i}`} className="relative pl-8 pb-5 last:pb-0 animate-fade-up" style={{ animationDelay: `${i * 80}ms` }}>
@@ -71,7 +79,7 @@ export function Timeline({ items, activityUrl }: Props) {
                 {item.reason}
               </p>
 
-              {/* 展开详情：地址 + 链接 */}
+              {/* 展开详情：地址 + 导航 + 查看 */}
               {isExpanded && (
                 <div className={`mt-3 pt-3 border-t flex flex-col gap-2 ${isMain ? "border-white/20" : "border-[var(--color-divider)]"}`}>
                   {item.location && (
@@ -79,16 +87,33 @@ export function Timeline({ items, activityUrl }: Props) {
                       📍 {item.location}
                     </div>
                   )}
-                  <div className="flex gap-2">
-                    {mapUrl && (
+                  <div className="flex gap-2 flex-wrap">
+                    {/* 导航到这里 — 最重要的按钮 */}
+                    <a
+                      href={navUrl(item)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className={`text-[12px] font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 ${
+                        isMain
+                          ? "bg-white/25 text-white hover:bg-white/35"
+                          : "bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)]"
+                      }`}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 11l19-9-9 19-2-8-8-2z" />
+                      </svg>
+                      导航到这里
+                    </a>
+                    {searchUrl(item) && (
                       <a
-                        href={mapUrl}
+                        href={searchUrl(item)!}
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
                         className={`text-[12px] font-medium px-3 py-1.5 rounded-lg transition-colors ${
                           isMain
-                            ? "bg-white/20 text-white hover:bg-white/30"
+                            ? "bg-white/15 text-white/80 hover:bg-white/25"
                             : "bg-[var(--color-accent-soft)] text-[var(--color-accent)] hover:bg-[var(--color-accent-light)]"
                         }`}
                       >
@@ -101,7 +126,7 @@ export function Timeline({ items, activityUrl }: Props) {
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
-                        className="text-[12px] font-medium px-3 py-1.5 rounded-lg bg-white/20 text-white hover:bg-white/30 transition-colors"
+                        className="text-[12px] font-medium px-3 py-1.5 rounded-lg bg-white/15 text-white/80 hover:bg-white/25 transition-colors"
                       >
                         查看活动详情
                       </a>
@@ -110,6 +135,26 @@ export function Timeline({ items, activityUrl }: Props) {
                 </div>
               )}
             </div>
+
+            {/* ── 下一站快捷导航条 ── */}
+            {nextItem && (
+              <a
+                href={navUrl(nextItem)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 mt-2 ml-1 px-3 py-2 rounded-lg bg-[var(--color-bg-dim)] hover:bg-[var(--color-border)] transition-colors group"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                  <path d="M3 11l19-9-9 19-2-8-8-2z" />
+                </svg>
+                <span className="text-[11px] text-[var(--color-t3)] group-hover:text-[var(--color-accent)] transition-colors">
+                  前往下一站 · {nextItem.name}
+                </span>
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="text-[var(--color-t3)] group-hover:text-[var(--color-accent)] ml-auto shrink-0 transition-colors">
+                  <path d="M3 1l4 4-4 4" />
+                </svg>
+              </a>
+            )}
           </div>
         )
       })}
