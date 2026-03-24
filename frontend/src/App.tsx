@@ -1,6 +1,5 @@
 /* ======================================================
- * 根组件
- * 路由定义 + 全局布局（移动端优先）
+ * 根组件 — Laper AI 风格布局
  * ====================================================== */
 
 import { BrowserRouter, Routes, Route } from "react-router"
@@ -11,17 +10,18 @@ import { ChatPage } from "./pages/ChatPage"
 function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-gray-50">
-        {/* 顶部导航 */}
-        <header className="bg-white shadow-sm sticky top-0 z-10">
-          <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
-            <h1 className="text-lg font-bold text-gray-900">周末去哪玩</h1>
-            <span className="text-xs text-gray-400">v0.1</span>
+      <div className="min-h-screen bg-[var(--color-bg)]">
+        {/* 毛玻璃导航 */}
+        <header className="glass sticky top-0 z-50 border-b border-[var(--color-border)]/50">
+          <div className="max-w-[600px] mx-auto px-5 h-[52px] flex items-center">
+            <h1 className="text-[15px] font-semibold tracking-[-0.03em] text-[var(--color-t1)]">
+              周末去哪玩
+            </h1>
           </div>
         </header>
 
-        {/* 页面内容 */}
-        <main className="max-w-lg mx-auto px-4 py-4">
+        {/* 内容区 */}
+        <main className="max-w-[600px] mx-auto px-5 pt-6 pb-24">
           <Routes>
             <Route path="/" element={<DiscoverPage />} />
             <Route path="/plan/:id" element={<PlanPage />} />

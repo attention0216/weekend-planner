@@ -1,8 +1,7 @@
 # 后端依赖
 fastapi[standard]
 uvicorn[standard]
-feedparser
 httpx
 apscheduler
-anthropic
+openai
 python-dotenv

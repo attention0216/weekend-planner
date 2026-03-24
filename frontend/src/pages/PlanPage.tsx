@@ -1,6 +1,6 @@
 /* ======================================================
- * 日程规划页
- * 调用后端 Plan API，以锚点活动展示配套日程
+ * 日程规划页 — 有机极简风
+ * 品牌色 hero · 时间线 · 小红书餐厅推荐
  * ====================================================== */
 
 import { useState, useEffect } from "react"
@@ -26,22 +26,36 @@ export function PlanPage() {
       .finally(() => setLoading(false))
   }, [id])
 
+  /* ── 加载态：骨架屏 ── */
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 gap-3">
-        <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin" />
-        <p className="text-sm text-gray-400">正在为你规划行程...</p>
+      <div className="flex flex-col gap-6">
+        <div className="skeleton h-4 w-16" />
+        <div className="rounded-2xl p-6 bg-[var(--color-bg-dim)]">
+          <div className="skeleton h-3 w-24 mb-3" />
+          <div className="skeleton h-6 w-3/4 mb-2" />
+          <div className="skeleton h-4 w-1/2" />
+        </div>
+        <div className="skeleton h-5 w-20" />
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="ml-3 pl-8 pb-4">
+            <div className="skeleton h-16 w-full rounded-xl" />
+          </div>
+        ))}
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="text-center py-16">
-        <div className="bg-red-50 text-red-600 text-sm rounded-lg p-4 mb-4">
+      <div className="text-center py-20">
+        <div className="bg-[#faf2f2] text-[var(--color-error)] text-[13px] rounded-xl p-5 mb-5">
           规划失败：{error}
         </div>
-        <button onClick={() => navigate("/")} className="text-sm text-gray-900 underline">
+        <button
+          onClick={() => navigate("/")}
+          className="text-[13px] text-[var(--color-accent)] font-medium"
+        >
           返回活动列表
         </button>
       </div>
@@ -53,46 +67,92 @@ export function PlanPage() {
   const { activity, schedule, nearby_restaurants, nearby_spots } = plan
 
   return (
-    <div className="flex flex-col gap-5">
-      {/* 返回按钮 */}
+    <div className="flex flex-col gap-6">
+      {/* 返回 */}
       <button
         onClick={() => navigate("/")}
-        className="self-start text-sm text-gray-500 flex items-center gap-1"
+        className="self-start text-[13px] text-[var(--color-accent)] font-medium flex items-center gap-1 -ml-1"
       >
-        ← 返回活动列表
+        <svg width="7" height="12" viewBox="0 0 7 12" fill="none" className="mt-px">
+          <path d="M6 1L1 6L6 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+        返回
       </button>
 
-      {/* 锚点活动概要 */}
-      <div className="bg-gray-900 text-white rounded-xl p-4">
-        <div className="text-xs text-gray-400 mb-1">{activity.date} · {activity.category}</div>
-        <h2 className="text-lg font-semibold mb-1">{activity.title}</h2>
-        <div className="text-sm text-gray-300">📍 {activity.location}</div>
-        <div className="text-sm text-gray-300">
-          {activity.time} · {activity.price === 0 ? "免费" : `¥${activity.price}`}
+      {/* Hero 卡片 */}
+      <div className="bg-[var(--color-accent)] rounded-2xl p-6 text-white animate-fade-up">
+        <div className="text-[11px] font-medium text-white/50 tracking-[0.05em] uppercase mb-2">
+          {activity.date} · {activity.category}
+        </div>
+        <h2 className="text-[20px] font-bold tracking-[-0.03em] leading-tight mb-2">
+          {activity.title}
+        </h2>
+        <div className="flex flex-col gap-1 text-[13px] text-white/70">
+          {activity.location && <span>📍 {activity.location}</span>}
+          <span>
+            {activity.time}{activity.time ? " · " : ""}
+            {activity.price === 0 ? "免费" : `¥${activity.price}`}
+          </span>
         </div>
         {activity.description && (
-          <p className="text-xs text-gray-400 mt-2 line-clamp-2">{activity.description}</p>
+          <p className="text-[12px] text-white/50 mt-3 leading-relaxed line-clamp-2">
+            {activity.description}
+          </p>
         )}
       </div>
 
-      {/* 日程时间线 */}
+      {/* 时间线 */}
       <div>
-        <h3 className="text-sm font-medium text-gray-700 mb-3">为你规划的一天</h3>
+        <h3 className="text-[18px] font-bold tracking-[-0.03em] text-[var(--color-t1)] mb-4">
+          你的一天
+        </h3>
         <Timeline items={schedule} />
       </div>
 
-      {/* 附近推荐 */}
+      {/* 小红书餐厅推荐 */}
       {nearby_restaurants.length > 0 && (
         <div>
-          <h3 className="text-sm font-medium text-gray-700 mb-2">附近餐厅</h3>
+          <h3 className="text-[18px] font-bold tracking-[-0.03em] text-[var(--color-t1)] mb-3">
+            附近吃什么
+          </h3>
           <div className="flex flex-col gap-2">
-            {nearby_restaurants.slice(0, 3).map((r, i) => (
-              <div key={i} className="bg-white rounded-lg border border-gray-100 p-3 text-sm">
-                <div className="font-medium text-gray-900">{r.name}</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {r.rating && `${r.rating}分 · `}
-                  {r.cost && `人均¥${r.cost} · `}
-                  {r.distance}m
+            {nearby_restaurants.slice(0, 4).map((r, i) => (
+              <div
+                key={i}
+                className="shadow-card bg-[var(--color-bg-card)] rounded-xl p-4 animate-fade-up"
+                style={{ animationDelay: `${i * 60}ms` }}
+              >
+                <div className="flex items-baseline justify-between mb-1">
+                  <span className="text-[14px] font-semibold text-[var(--color-t1)] tracking-[-0.02em]">
+                    {r.name}
+                  </span>
+                  {r.rating > 0 && (
+                    <span className="text-[12px] font-medium text-[var(--color-warning)]">
+                      {r.rating}分
+                    </span>
+                  )}
+                </div>
+                {r.reason && (
+                  <p className="text-[12px] text-[var(--color-t2)] leading-relaxed mb-2">
+                    {r.reason}
+                  </p>
+                )}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {r.per_capita > 0 && (
+                    <span className="text-[11px] px-2 py-0.5 rounded bg-[var(--color-bg-dim)] text-[var(--color-t3)]">
+                      人均¥{r.per_capita}
+                    </span>
+                  )}
+                  {r.tags?.map((tag, j) => (
+                    <span key={j} className="text-[11px] px-2 py-0.5 rounded bg-[var(--color-accent-soft)] text-[var(--color-accent)]">
+                      {tag}
+                    </span>
+                  ))}
+                  {r.distance_desc && (
+                    <span className="text-[11px] text-[var(--color-t3)]">
+                      {r.distance_desc}
+                    </span>
+                  )}
                 </div>
               </div>
             ))}
@@ -100,38 +160,43 @@ export function PlanPage() {
         </div>
       )}
 
+      {/* 附近景点 */}
       {nearby_spots.length > 0 && (
         <div>
-          <h3 className="text-sm font-medium text-gray-700 mb-2">附近景点</h3>
+          <h3 className="text-[18px] font-bold tracking-[-0.03em] text-[var(--color-t1)] mb-3">
+            附近逛什么
+          </h3>
           <div className="flex flex-col gap-2">
             {nearby_spots.map((s, i) => (
-              <div key={i} className="bg-white rounded-lg border border-gray-100 p-3 text-sm">
-                <div className="font-medium text-gray-900">{s.name}</div>
-                <div className="text-xs text-gray-500 mt-1">{s.distance}m · {s.address}</div>
+              <div key={i} className="shadow-card bg-[var(--color-bg-card)] rounded-xl p-4">
+                <div className="text-[14px] font-semibold text-[var(--color-t1)]">{s.name}</div>
+                <div className="text-[12px] text-[var(--color-t3)] mt-1">{s.distance}m · {s.address}</div>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* 操作按钮 */}
-      <button
-        onClick={() => navigate(`/chat/${id}`, { state: { schedule, activity } })}
-        className="w-full py-3 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium active:bg-gray-200 transition-colors"
-      >
-        💬 不满意？聊聊调整一下
-      </button>
-
-      {activity.location && (
-        <a
-          href={`https://uri.amap.com/search?keyword=${encodeURIComponent(activity.location)}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="w-full py-3 bg-blue-50 text-blue-600 rounded-xl text-sm font-medium text-center block"
+      {/* 操作区 */}
+      <div className="flex flex-col gap-3 pt-2">
+        <button
+          onClick={() => navigate(`/chat/${id}`, { state: { schedule, activity } })}
+          className="w-full py-[13px] bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white rounded-xl text-[14px] font-semibold transition-colors duration-200 tracking-[-0.01em]"
         >
-          🗺️ 在高德地图中查看
-        </a>
-      )}
+          调整日程
+        </button>
+
+        {activity.location && (
+          <a
+            href={`https://uri.amap.com/search?keyword=${encodeURIComponent(activity.location)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full py-[13px] bg-[var(--color-bg-dim)] text-[var(--color-accent)] rounded-xl text-[14px] font-medium text-center block transition-colors duration-200 hover:bg-[var(--color-border)]"
+          >
+            在高德地图中查看
+          </a>
+        )}
+      </div>
     </div>
   )
 }

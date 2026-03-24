@@ -1,6 +1,5 @@
 /* ======================================================
- * 分类筛选栏
- * 横向滚动的标签列表，点击切换活动类别
+ * 分类筛选栏 — 有机极简 pill
  * ====================================================== */
 
 import type { Category } from "../types"
@@ -14,15 +13,15 @@ interface Props {
 
 export function CategoryFilter({ active, onChange }: Props) {
   return (
-    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
+    <div className="flex gap-2 overflow-x-auto scrollbar-none py-1">
       {categories.map((c) => (
         <button
           key={c}
           onClick={() => onChange(c)}
-          className={`shrink-0 text-sm px-3 py-1.5 rounded-full transition-colors ${
+          className={`shrink-0 text-[13px] font-medium px-4 py-[7px] rounded-lg transition-all duration-200 ${
             active === c
-              ? "bg-gray-900 text-white"
-              : "bg-gray-100 text-gray-600 active:bg-gray-200"
+              ? "bg-[var(--color-accent)] text-white"
+              : "bg-[var(--color-bg-dim)] text-[var(--color-t2)] hover:bg-[var(--color-border)]"
           }`}
         >
           {c}

@@ -1,6 +1,5 @@
 /* ======================================================
- * 核心数据类型
- * 所有模块共享的类型定义，单一真相源
+ * 核心数据类型 — 单一真相源
  * ====================================================== */
 
 export type Category = "AI" | "读书会" | "电影" | "景点" | "美食" | "活动" | "全部"
@@ -28,16 +27,20 @@ export interface ScheduleItem {
   reason: string
 }
 
+export interface Restaurant {
+  name: string
+  cuisine: string
+  per_capita: number
+  rating: number
+  reason: string
+  tags: string[]
+  distance_desc: string
+}
+
 export interface Plan {
   activity: Activity
   schedule: ScheduleItem[]
-  nearby_restaurants: Array<{
-    name: string
-    address: string
-    rating: string
-    cost: string
-    distance: string
-  }>
+  nearby_restaurants: Restaurant[]
   nearby_spots: Array<{
     name: string
     address: string

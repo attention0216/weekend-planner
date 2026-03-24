@@ -1,212 +1,171 @@
 from __future__ import annotations
 """
 活动聚合引擎
-从 RSSHub 拉取豆瓣同城 + 猫眼电影，结构化后写入数据库
+用 LLM + Tavily 搜索发现真实北京周末活动
 """
 import hashlib
+import json
 import logging
-import re
 from datetime import datetime, timedelta
 
-import feedparser
 import httpx
+from openai import AsyncOpenAI
 
-from config import RSSHUB_BASE, DOUBAN_CITY_ID
+from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, TAVILY_API_KEY, CITY_NAME
 from db import upsert_activity, count_activities
 
 logger = logging.getLogger(__name__)
 
-# 跳过系统代理，直连 RSSHub，模拟浏览器 UA
-_HTTP_CLIENT_ARGS = {
-    "timeout": 30,
-    "proxy": None,
-    "headers": {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"},
-    "follow_redirects": True,
-}
 
-
-def _make_id(source: str, title: str, date: str) -> str:
-    """生成稳定的活动ID（用于去重）"""
-    raw = f"{source}:{title}:{date}"
+def _make_id(source: str, title: str) -> str:
+    """生成稳定的活动 ID"""
+    raw = f"{source}:{title}"
     return hashlib.md5(raw.encode()).hexdigest()[:12]
 
 
-def _extract_date_from_text(text: str) -> str:
-    """从文本中提取日期，默认本周末"""
-    m = re.search(r"(\d{4}[-/]\d{1,2}[-/]\d{1,2})", text)
-    if m:
-        return m.group(1).replace("/", "-")
-
-    m = re.search(r"(\d{1,2})月(\d{1,2})日", text)
-    if m:
-        year = datetime.now().year
-        return f"{year}-{int(m.group(1)):02d}-{int(m.group(2)):02d}"
-
+def _next_weekend() -> tuple[str, str]:
+    """返回下一个周末的日期"""
     today = datetime.now()
-    days_until_saturday = (5 - today.weekday()) % 7
-    if days_until_saturday == 0 and today.hour > 12:
-        days_until_saturday = 7
-    saturday = today + timedelta(days=days_until_saturday)
-    return saturday.strftime("%Y-%m-%d")
+    days_to_sat = (5 - today.weekday()) % 7
+    if days_to_sat == 0 and today.hour > 12:
+        days_to_sat = 7
+    sat = today + timedelta(days=days_to_sat)
+    sun = sat + timedelta(days=1)
+    return sat.strftime("%Y-%m-%d"), sun.strftime("%Y-%m-%d")
 
 
-def _extract_price(text: str) -> float:
-    """从文本提取价格"""
-    m = re.search(r"[¥￥](\d+(?:\.\d+)?)", text)
-    if m:
-        return float(m.group(1))
-    if "免费" in text or "free" in text.lower():
-        return 0
-    return 0
-
-
-def _classify_activity(title: str, desc: str) -> str:
-    """简单关键词分类"""
-    text = f"{title} {desc}".lower()
-    if any(k in text for k in ["ai", "人工智能", "大模型", "llm", "gpt", "编程", "黑客松", "hackathon", "技术"]):
-        return "AI"
-    if any(k in text for k in ["读书", "书友", "阅读", "书店", "分享会"]):
-        return "读书会"
-    if any(k in text for k in ["电影", "影院", "首映", "点映", "imax"]):
-        return "电影"
-    if any(k in text for k in ["展览", "博物馆", "公园", "景区", "古镇", "故宫"]):
-        return "景点"
-    if any(k in text for k in ["美食", "餐厅", "探店", "吃", "火锅", "烧烤"]):
-        return "美食"
-    return "活动"
-
-
-async def fetch_douban_events() -> list[dict]:
-    """从 RSSHub 拉取豆瓣同城热门活动"""
-    url = f"{RSSHUB_BASE}/douban/event/hot/{DOUBAN_CITY_ID}"
-    logger.info(f"拉取豆瓣同城: {url}")
-
-    activities = []
+async def _tavily_search(query: str, max_results: int = 5) -> list[dict]:
+    """Tavily 搜索"""
+    if not TAVILY_API_KEY:
+        return []
     try:
-        async with httpx.AsyncClient(**_HTTP_CLIENT_ARGS) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-
-        feed = feedparser.parse(resp.text)
-        for entry in feed.entries[:30]:
-            title = entry.get("title", "").strip()
-            if not title:
-                continue
-
-            desc = entry.get("summary", "") or entry.get("description", "")
-            date = _extract_date_from_text(f"{title} {desc}")
-            price = _extract_price(desc)
-            category = _classify_activity(title, desc)
-
-            image = None
-            if hasattr(entry, "media_content") and entry.media_content:
-                image = entry.media_content[0].get("url")
-            elif hasattr(entry, "enclosures") and entry.enclosures:
-                image = entry.enclosures[0].get("href")
-
-            location = ""
-            loc_match = re.search(r"地[点址][:：]\s*(.+?)(?:\n|<|$)", desc)
-            if loc_match:
-                location = loc_match.group(1).strip()
-
-            activity = {
-                "id": _make_id("douban", title, date),
-                "title": title,
-                "category": category,
-                "date": date,
-                "time": "",
-                "location": location,
-                "latitude": None,
-                "longitude": None,
-                "price": price,
-                "source": "豆瓣同城",
-                "url": entry.get("link", ""),
-                "image": image,
-                "description": re.sub(r"<[^>]+>", "", desc)[:500],
-            }
-            activities.append(activity)
-
-        logger.info(f"豆瓣同城获取 {len(activities)} 个活动")
+        async with httpx.AsyncClient(timeout=15, proxy=None) as client:
+            resp = await client.post("https://api.tavily.com/search", json={
+                "api_key": TAVILY_API_KEY,
+                "query": query,
+                "max_results": max_results,
+                "search_depth": "basic",
+            })
+            data = resp.json()
+            return [
+                {"title": r.get("title", ""), "content": r.get("content", "")[:300], "url": r.get("url", "")}
+                for r in data.get("results", [])
+            ]
     except Exception as e:
-        logger.error(f"豆瓣同城拉取失败: {e}")
+        logger.warning(f"Tavily 搜索失败 [{query[:30]}]: {e}")
+    return []
 
-    return activities
 
+async def _llm_discover_activities(web_context: str) -> list[dict]:
+    """用 LLM 基于搜索结果生成真实活动数据"""
+    if not LLM_API_KEY:
+        return []
 
-async def fetch_maoyan_movies() -> list[dict]:
-    """从 RSSHub 拉取猫眼热映电影"""
-    url = f"{RSSHUB_BASE}/maoyan/hot"
-    logger.info(f"拉取猫眼热映: {url}")
+    sat, sun = _next_weekend()
+    client = AsyncOpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
 
-    activities = []
+    prompt = f"""你是一个北京本地生活专家。请基于以下搜索结果和你的知识，生成 {CITY_NAME} 本周末（{sat} 和 {sun}）的真实活动推荐。
+
+## 搜索到的信息
+{web_context[:3000]}
+
+## 要求
+1. 只推荐**真实存在的**场馆、展览、活动、餐厅和电影
+2. 地点必须是真实地址，经纬度必须准确（北京范围：纬度39.4-40.2，经度115.7-117.4）
+3. 覆盖 6 个分类：AI/技术、读书会、电影、景点/展览、美食、活动
+4. 每个分类 2-3 个活动，总共 12-15 个
+5. 电影推荐当前热映或即将上映的真实电影
+6. 展览推荐故宫、国博、UCCA、798 等真实场馆的常设或当期展览
+7. 价格要合理真实
+
+## 返回格式
+严格返回 JSON 数组，每个元素：
+{{
+  "title": "活动名称",
+  "category": "AI|读书会|电影|景点|美食|活动",
+  "date": "{sat} 或 {sun}",
+  "time": "HH:MM-HH:MM 或 全天",
+  "location": "完整地址",
+  "latitude": 39.xxxx,
+  "longitude": 116.xxxx,
+  "price": 数字,
+  "description": "一两句话描述，包含亮点和实用信息",
+  "source": "数据来源（如：故宫博物院官网、猫眼电影、大众点评等）",
+  "url": "相关链接（如果有）"
+}}
+
+只返回 JSON 数组，不要其他文字。"""
+
     try:
-        async with httpx.AsyncClient(**_HTTP_CLIENT_ARGS) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-
-        feed = feedparser.parse(resp.text)
-        for entry in feed.entries[:15]:
-            title = entry.get("title", "").strip()
-            if not title:
-                continue
-
-            desc = entry.get("summary", "") or entry.get("description", "")
-            image = None
-            if hasattr(entry, "enclosures") and entry.enclosures:
-                image = entry.enclosures[0].get("href")
-
-            today = datetime.now()
-            days_until_saturday = (5 - today.weekday()) % 7
-            if days_until_saturday == 0 and today.hour > 12:
-                days_until_saturday = 7
-            saturday = today + timedelta(days=days_until_saturday)
-
-            activity = {
-                "id": _make_id("maoyan", title, saturday.strftime("%Y-%m-%d")),
-                "title": title,
-                "category": "电影",
-                "date": saturday.strftime("%Y-%m-%d"),
-                "time": "全天",
-                "location": "各大影院",
-                "latitude": None,
-                "longitude": None,
-                "price": 45,
-                "source": "猫眼电影",
-                "url": entry.get("link", ""),
-                "image": image,
-                "description": re.sub(r"<[^>]+>", "", desc)[:500],
-            }
-            activities.append(activity)
-
-        logger.info(f"猫眼电影获取 {len(activities)} 部电影")
+        resp = await client.chat.completions.create(
+            model=LLM_MODEL,
+            max_tokens=4096,
+            temperature=0.3,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = resp.choices[0].message.content.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1].rsplit("```", 1)[0]
+        return json.loads(text)
     except Exception as e:
-        logger.error(f"猫眼电影拉取失败: {e}")
-
-    return activities
+        logger.error(f"LLM 活动发现失败: {e}")
+    return []
 
 
 async def run_aggregation():
-    """执行一轮完整的活动聚合，RSSHub 失败时降级到种子数据"""
+    """执行一轮完整的活动聚合"""
     logger.info("=== 开始活动聚合 ===")
 
-    all_activities = []
-    all_activities.extend(await fetch_douban_events())
-    all_activities.extend(await fetch_maoyan_movies())
+    # 1. Tavily 搜索真实活动信息
+    search_queries = [
+        f"{CITY_NAME} 本周末 展览 博物馆 活动",
+        f"{CITY_NAME} 热映电影 推荐",
+        f"{CITY_NAME} AI 技术 meetup 活动",
+        f"{CITY_NAME} 周末 读书会 书店",
+        f"{CITY_NAME} 周末 景点 好去处",
+    ]
 
-    # RSSHub 全部失败时，使用种子数据保底
-    if not all_activities:
-        logger.warning("所有 RSS 源不可用，使用种子数据降级")
+    web_context_parts = []
+    for q in search_queries:
+        results = await _tavily_search(q, max_results=3)
+        for r in results:
+            web_context_parts.append(f"[{r['title']}] {r['content']}")
+
+    web_context = "\n\n".join(web_context_parts) if web_context_parts else "无搜索结果，请基于你对北京的知识推荐。"
+
+    # 2. LLM 生成结构化活动数据
+    activities = await _llm_discover_activities(web_context)
+
+    # 3. 降级：LLM 也失败时用种子数据
+    if not activities:
+        logger.warning("LLM 活动发现失败，使用种子数据降级")
         from seed_data import get_seed_activities
-        all_activities = get_seed_activities()
+        activities = get_seed_activities()
 
+    # 4. 写入数据库
     saved = 0
-    for a in all_activities:
+    for a in activities:
         try:
-            upsert_activity(a)
+            activity = {
+                "id": _make_id(a.get("source", "llm"), a["title"]),
+                "title": a["title"],
+                "category": a.get("category", "活动"),
+                "date": a.get("date", _next_weekend()[0]),
+                "time": a.get("time", ""),
+                "location": a.get("location", ""),
+                "latitude": a.get("latitude"),
+                "longitude": a.get("longitude"),
+                "price": a.get("price", 0),
+                "source": a.get("source", "AI 推荐"),
+                "url": a.get("url", ""),
+                "image": a.get("image"),
+                "description": a.get("description", ""),
+            }
+            upsert_activity(activity)
             saved += 1
         except Exception as e:
             logger.error(f"保存活动失败 [{a.get('title')}]: {e}")
 
     total = count_activities()
-    logger.info(f"=== 聚合完成: 本次 {saved}/{len(all_activities)} 条，数据库总计 {total} 条 ===")
+    logger.info(f"=== 聚合完成: 本次 {saved}/{len(activities)} 条，数据库总计 {total} 条 ===")
     return saved

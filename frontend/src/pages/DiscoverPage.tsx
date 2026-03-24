@@ -1,6 +1,6 @@
 /* ======================================================
- * 活动发现页
- * 卡片列表 + 分类筛选，数据来自后端 API
+ * 活动发现页 — 有机极简风
+ * 大标题 · 分类筛选 · 卡片流 · 骨架屏
  * ====================================================== */
 
 import { useState, useEffect } from "react"
@@ -26,43 +26,66 @@ export function DiscoverPage() {
       .finally(() => setLoading(false))
   }, [category])
 
-  function handlePlan(id: string) {
-    navigate(`/plan/${id}`)
-  }
-
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
+      {/* 标题区 */}
+      <div className="pt-2 pb-1">
+        <h2 className="text-[26px] font-bold tracking-[-0.04em] leading-tight text-[var(--color-t1)]">
+          发现周末好去处
+        </h2>
+        <p className="text-[14px] text-[var(--color-t3)] mt-1.5 tracking-[-0.01em]">
+          选一个感兴趣的，剩下的交给我
+        </p>
+      </div>
+
+      {/* 分类筛选 */}
       <CategoryFilter active={category} onChange={setCategory} />
 
-      {/* 加载态 */}
+      {/* 骨架屏加载态 */}
       {loading && (
-        <div className="flex justify-center py-16">
-          <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin" />
+        <div className="flex flex-col gap-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="rounded-2xl p-5 bg-[var(--color-bg-card)]">
+              <div className="skeleton h-4 w-16 mb-3" />
+              <div className="skeleton h-5 w-3/4 mb-2" />
+              <div className="skeleton h-4 w-full mb-2" />
+              <div className="skeleton h-3 w-1/2 mb-4" />
+              <div className="flex justify-between items-center pt-3 border-t border-[var(--color-divider)]">
+                <div className="skeleton h-5 w-12" />
+                <div className="skeleton h-8 w-24 rounded-lg" />
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
       {/* 错误态 */}
       {error && (
-        <div className="bg-red-50 text-red-600 text-sm rounded-lg p-4 text-center">
+        <div className="bg-[#faf2f2] text-[var(--color-error)] text-[13px] rounded-xl p-5 text-center">
           加载失败：{error}
         </div>
       )}
 
-      {/* 正常态 */}
+      {/* 活动列表 */}
       {!loading && !error && (
         <>
-          <div className="text-xs text-gray-400">
-            {activities.length} 个活动 · 本周末
+          <div className="text-[12px] text-[var(--color-t3)] tracking-wide">
+            {activities.length} 个活动
           </div>
 
           <div className="flex flex-col gap-3">
-            {activities.map((a) => (
-              <ActivityCard key={a.id} activity={a} onPlan={handlePlan} />
+            {activities.map((a, i) => (
+              <div key={a.id} className="animate-fade-up" style={{ animationDelay: `${i * 60}ms` }}>
+                <ActivityCard activity={a} onPlan={(id) => navigate(`/plan/${id}`)} />
+              </div>
             ))}
           </div>
 
           {activities.length === 0 && (
-            <p className="text-center text-gray-400 py-12">暂无该类活动</p>
+            <div className="text-center py-20">
+              <p className="text-[16px] font-semibold text-[var(--color-t1)] tracking-[-0.02em]">暂无活动</p>
+              <p className="text-[13px] text-[var(--color-t3)] mt-1">换个分类试试？</p>
+            </div>
           )}
         </>
       )}
