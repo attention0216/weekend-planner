@@ -4,6 +4,7 @@
  * ====================================================== */
 
 import type { Activity } from "../types"
+import { formatDate } from "../utils"
 
 interface Props {
   activity: Activity
@@ -48,7 +49,7 @@ export function ActivityCard({ activity, onPlan }: Props) {
       <div className="flex flex-col gap-1.5 text-[12px] text-[var(--color-t3)] mb-4">
         <div className="flex items-center gap-2">
           <span className="w-4 text-center text-[11px]">📅</span>
-          <span>{activity.date}{activity.time ? ` · ${activity.time}` : ""}</span>
+          <span>{formatDate(activity.date)}{activity.time ? ` · ${activity.time}` : ""}</span>
         </div>
         {activity.location && (
           <div className="flex items-center gap-2">

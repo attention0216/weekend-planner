@@ -75,7 +75,7 @@ export function DiscoverPage() {
 
           <div className="flex flex-col gap-3">
             {activities.map((a, i) => (
-              <div key={a.id} className="animate-fade-up" style={{ animationDelay: `${i * 60}ms` }}>
+              <div key={a.id} className="animate-fade-up" style={{ animationDelay: `${Math.min(i * 60, 300)}ms` }}>
                 <ActivityCard activity={a} onPlan={(id) => navigate(`/plan/${id}`)} />
               </div>
             ))}

@@ -30,9 +30,11 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("数据库初始化完成")
 
+    # 首次聚合放入后台任务，不阻塞启动
+    import asyncio
     if count_activities() == 0:
-        logger.info("数据库为空，执行首次聚合...")
-        await run_aggregation()
+        logger.info("数据库为空，后台执行首次聚合...")
+        asyncio.create_task(run_aggregation())
 
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler

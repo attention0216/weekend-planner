@@ -7,6 +7,7 @@ import { useState, useEffect } from "react"
 import { useParams, useNavigate } from "react-router"
 import { Timeline } from "../components/Timeline"
 import { api } from "../api/client"
+import { formatDate } from "../utils"
 import type { Plan } from "../types"
 
 export function PlanPage() {
@@ -26,7 +27,7 @@ export function PlanPage() {
       .finally(() => setLoading(false))
   }, [id])
 
-  /* ── 加载态：骨架屏 ── */
+  /* ── 加载态：骨架屏 + 进度提示 ── */
   if (loading) {
     return (
       <div className="flex flex-col gap-6">
@@ -36,7 +37,12 @@ export function PlanPage() {
           <div className="skeleton h-6 w-3/4 mb-2" />
           <div className="skeleton h-4 w-1/2" />
         </div>
-        <div className="skeleton h-5 w-20" />
+        <div className="flex flex-col items-center gap-3 py-8">
+          <div className="w-5 h-5 border-2 border-[var(--color-border)] border-t-[var(--color-accent)] rounded-full animate-spin" />
+          <p className="text-[13px] text-[var(--color-t3)] animate-pulse">
+            正在搜索附近餐厅和景点，为你编排日程...
+          </p>
+        </div>
         {[1, 2, 3].map((i) => (
           <div key={i} className="ml-3 pl-8 pb-4">
             <div className="skeleton h-16 w-full rounded-xl" />
@@ -82,7 +88,7 @@ export function PlanPage() {
       {/* Hero 卡片 */}
       <div className="bg-[var(--color-accent)] rounded-2xl p-6 text-white animate-fade-up">
         <div className="text-[11px] font-medium text-white/50 tracking-[0.05em] uppercase mb-2">
-          {activity.date} · {activity.category}
+          {formatDate(activity.date)} · {activity.category}
         </div>
         <h2 className="text-[20px] font-bold tracking-[-0.03em] leading-tight mb-2">
           {activity.title}

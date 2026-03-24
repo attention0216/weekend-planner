@@ -106,7 +106,15 @@ async def _llm_discover_activities(web_context: str) -> list[dict]:
         text = resp.choices[0].message.content.strip()
         if text.startswith("```"):
             text = text.split("\n", 1)[1].rsplit("```", 1)[0]
+        # 容错：尝试提取 JSON 数组
+        import re
+        if not text.startswith("["):
+            match = re.search(r"\[[\s\S]*\]", text)
+            if match:
+                text = match.group(0)
         return json.loads(text)
+    except json.JSONDecodeError as e:
+        logger.error(f"LLM 返回非法 JSON: {e}")
     except Exception as e:
         logger.error(f"LLM 活动发现失败: {e}")
     return []

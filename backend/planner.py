@@ -5,6 +5,7 @@ from __future__ import annotations
 """
 import json
 import logging
+import re
 
 import httpx
 from openai import AsyncOpenAI
@@ -12,6 +13,26 @@ from openai import AsyncOpenAI
 from config import AMAP_KEY, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, TAVILY_API_KEY
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_llm_json(text: str):
+    """从 LLM 响应中健壮地提取 JSON"""
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # 尝试提取 JSON 数组或对象
+        for pattern in [r"\[[\s\S]*\]", r"\{[\s\S]*\}"]:
+            match = re.search(pattern, text)
+            if match:
+                try:
+                    return json.loads(match.group(0))
+                except json.JSONDecodeError:
+                    continue
+        logger.error(f"无法解析 LLM JSON: {text[:200]}")
+        return None
 
 
 # ======================================================
@@ -138,9 +159,8 @@ JSON 数组：
             messages=[{"role": "user", "content": prompt}],
         )
         text = resp.choices[0].message.content.strip()
-        if text.startswith("```"):
-            text = text.split("\n", 1)[1].rsplit("```", 1)[0]
-        return json.loads(text)
+        result = _parse_llm_json(text)
+        return result if isinstance(result, list) else []
     except Exception as e:
         logger.error(f"小红书餐厅结构化失败: {e}")
     return []
@@ -195,9 +215,8 @@ type 只能是 lunch/dinner/activity/explore。只返回 JSON。"""
             messages=[{"role": "user", "content": prompt}],
         )
         text = resp.choices[0].message.content.strip()
-        if text.startswith("```"):
-            text = text.split("\n", 1)[1].rsplit("```", 1)[0]
-        return json.loads(text)
+        result = _parse_llm_json(text)
+        return result if isinstance(result, list) else _fallback_plan(activity)
     except Exception as e:
         logger.error(f"日程规划失败: {e}")
         return _fallback_plan(activity)
@@ -234,10 +253,10 @@ schedule 格式同之前。只返回 JSON。"""
             messages=[{"role": "user", "content": prompt}],
         )
         text = resp.choices[0].message.content.strip()
-        if text.startswith("```"):
-            text = text.split("\n", 1)[1].rsplit("```", 1)[0]
-        result = json.loads(text)
-        return result.get("reply", "已调整"), result.get("schedule", current_plan)
+        result = _parse_llm_json(text)
+        if isinstance(result, dict):
+            return result.get("reply", "已调整"), result.get("schedule", current_plan)
+        return "抱歉，调整失败", current_plan
     except Exception as e:
         logger.error(f"对话调整失败: {e}")
         return f"抱歉，调整失败：{e}", current_plan

@@ -1,55 +1,64 @@
 /* ======================================================
- * API 客户端
- * 前端与后端的唯一通信层
+ * API 客户端 — 唯一通信层
+ * 带超时控制 + 错误友好化
  * ====================================================== */
 
 import type { Activity, Plan } from "../types"
 
 const BASE = "/api"
 
-async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const resp = await fetch(`${BASE}${url}`, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  })
-  if (!resp.ok) {
-    throw new Error(`${resp.status} ${resp.statusText}`)
+async function request<T>(url: string, options?: RequestInit & { timeout?: number }): Promise<T> {
+  const { timeout = 120000, ...fetchOptions } = options ?? {}
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeout)
+
+  try {
+    const resp = await fetch(`${BASE}${url}`, {
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      ...fetchOptions,
+    })
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => resp.statusText)
+      throw new Error(text || `${resp.status}`)
+    }
+    return resp.json()
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      throw new Error("请求超时，请稍后重试")
+    }
+    throw e
+  } finally {
+    clearTimeout(timer)
   }
-  return resp.json()
 }
 
 export const api = {
-  /** 活动列表 */
   listActivities(category?: string): Promise<Activity[]> {
     const params = category && category !== "全部" ? `?category=${encodeURIComponent(category)}` : ""
-    return request(`/activities${params}`)
+    return request(`/activities${params}`, { timeout: 15000 })
   },
 
-  /** 生成配套日程 */
   createPlan(activityId: string): Promise<Plan> {
     return request("/plan", {
       method: "POST",
       body: JSON.stringify({ activity_id: activityId }),
+      timeout: 120000,
     })
   },
 
-  /** 对话调整日程 */
   chat(activityId: string, message: string, currentPlan: Plan["schedule"]): Promise<{
     reply: string
     schedule: Plan["schedule"]
   }> {
     return request("/chat", {
       method: "POST",
-      body: JSON.stringify({
-        activity_id: activityId,
-        message,
-        current_plan: currentPlan,
-      }),
+      body: JSON.stringify({ activity_id: activityId, message, current_plan: currentPlan }),
+      timeout: 90000,
     })
   },
 
-  /** 手动刷新聚合 */
   refresh(): Promise<{ refreshed: number; total: number }> {
-    return request("/refresh", { method: "POST" })
+    return request("/refresh", { method: "POST", timeout: 120000 })
   },
 }
