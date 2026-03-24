@@ -8,7 +8,7 @@ import { useParams, useNavigate } from "react-router"
 import { Timeline } from "../components/Timeline"
 import { ChatDrawer } from "../components/ChatDrawer"
 import { api } from "../api/client"
-import { getCachedPlan, setCachedPlan } from "../api/planCache"
+import { getCachedPlan, setCachedPlan, clearPlanCache } from "../api/planCache"
 import { formatDate } from "../utils"
 import type { Plan, ScheduleItem } from "../types"
 
@@ -37,6 +37,7 @@ export function PlanPage() {
   const [error, setError] = useState("")
   const [chatOpen, setChatOpen] = useState(false)
   const [faved, setFaved] = useState(false)
+  const [shared, setShared] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
@@ -72,7 +73,40 @@ export function PlanPage() {
     return () => ctrl.abort()
   }, [id])
 
-  /* ── 对话调整后即时更新时间线 ── */
+  /* ── 分享日程到剪贴板 ── */
+  function handleShare() {
+    if (!plan) return
+    const text = `📅 ${plan.activity.title}\n${formatDate(plan.activity.date)}${plan.activity.time ? ` ${plan.activity.time}` : ""}\n📍 ${plan.activity.location || ""}\n\n🗓 日程安排：\n${plan.schedule.map((s) => `${s.time} ${s.name} — ${s.reason}`).join("\n")}`
+    navigator.clipboard.writeText(text).then(() => {
+      setShared(true)
+      setTimeout(() => setShared(false), 2000)
+    }).catch(() => {
+      /* fallback: 选择文本 */
+      const el = document.createElement("textarea")
+      el.value = text
+      document.body.appendChild(el)
+      el.select()
+      document.execCommand("copy")
+      document.body.removeChild(el)
+      setShared(true)
+      setTimeout(() => setShared(false), 2000)
+    })
+  }
+
+  /* ── 重新规划（清缓存） ── */
+  function handleReplan() {
+    if (!id) return
+    clearPlanCache(id)
+    setPlan(null)
+    setLoading(true)
+    setError("")
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
+    api.createPlan(id, ctrl.signal)
+      .then((p) => { setPlan(p); setCachedPlan(id, p) })
+      .catch((e) => { if (!(e instanceof DOMException)) setError(e.message) })
+      .finally(() => { if (!ctrl.signal.aborted) setLoading(false) })
+  }
   function handleScheduleUpdate(newSchedule: ScheduleItem[]) {
     if (!plan) return
     const updated = { ...plan, schedule: newSchedule }
@@ -192,7 +226,7 @@ export function PlanPage() {
           <h3 className="text-[18px] font-bold tracking-[-0.03em] text-[var(--color-t1)] mb-4">
             你的一天
           </h3>
-          <Timeline items={schedule} />
+          <Timeline items={schedule} activityUrl={activity.url} />
         </div>
 
         {/* 小红书餐厅推荐 */}
@@ -271,6 +305,25 @@ export function PlanPage() {
           >
             调整日程
           </button>
+
+          <div className="flex gap-3">
+            <button
+              onClick={handleShare}
+              className={`flex-1 py-[13px] rounded-xl text-[14px] font-medium text-center transition-colors duration-200 ${
+                shared
+                  ? "bg-[var(--color-accent-soft)] text-[var(--color-accent)]"
+                  : "bg-[var(--color-bg-dim)] text-[var(--color-t2)] hover:bg-[var(--color-border)]"
+              }`}
+            >
+              {shared ? "已复制 ✓" : "分享日程"}
+            </button>
+            <button
+              onClick={handleReplan}
+              className="flex-1 py-[13px] bg-[var(--color-bg-dim)] text-[var(--color-t2)] rounded-xl text-[14px] font-medium text-center transition-colors duration-200 hover:bg-[var(--color-border)]"
+            >
+              重新规划
+            </button>
+          </div>
 
           {activity.location && (
             <a

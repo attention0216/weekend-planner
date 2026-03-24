@@ -126,34 +126,43 @@ def api_get_activity(activity_id: str):
 
 @app.post("/api/plan")
 async def api_create_plan(req: PlanRequest):
-    """以活动为锚点生成配套日程"""
+    """以活动为锚点生成配套日程 — 并行加速"""
+    import asyncio
+
     activity = get_activity(req.activity_id)
     if not activity:
         raise HTTPException(status_code=404, detail="活动不存在")
 
     profile_hint = _profile_to_hint(req.user_profile)
 
-    # 1. 地理编码
+    # 1. 地理编码（仅在数据库无坐标时调用）
     coords = None
     if activity.get("latitude") and activity.get("longitude"):
         coords = (activity["latitude"], activity["longitude"])
     elif activity.get("location"):
         coords = await geocode(activity["location"])
 
-    # 2. 高德附近搜索
-    restaurants, spots = [], []
-    if coords:
+    # 2. 并行执行：高德 POI + 小红书推荐（不等前一个完成）
+    async def get_pois():
+        if not coords:
+            return [], []
         lat, lng = coords
-        restaurants = await search_nearby_pois(lat, lng, "餐厅", 2000)
-        spots = await search_nearby_pois(lat, lng, "景点|商圈|公园", 3000)
+        r, s = await asyncio.gather(
+            search_nearby_pois(lat, lng, "餐厅", 2000),
+            search_nearby_pois(lat, lng, "景点|商圈|公园", 3000),
+        )
+        return r, s
 
-    # 3. 小红书餐厅推荐
-    xhs_restaurants = await search_xiaohongshu_restaurants(
-        activity.get("location", ""),
-        profile_hint,
+    async def get_xhs():
+        return await search_xiaohongshu_restaurants(
+            activity.get("location", ""), profile_hint
+        )
+
+    (restaurants, spots), xhs_restaurants = await asyncio.gather(
+        get_pois(), get_xhs()
     )
 
-    # 4. LLM 编排日程（传入用户画像）
+    # 3. LLM 编排日程
     schedule = await generate_plan(activity, restaurants, spots, xhs_restaurants, profile_hint)
 
     return {

@@ -208,12 +208,12 @@ async def generate_plan(activity: dict, nearby_restaurants: list, nearby_spots: 
 3. 推荐理由要具体、有温度（不要泛泛而谈）
 4. 返回 JSON 数组：
 [
-  {{"time": "11:30", "type": "lunch", "name": "餐厅名", "reason": "推荐理由"}},
-  {{"time": "14:00", "type": "activity", "name": "活动名", "reason": "主活动"}},
-  {{"time": "18:00", "type": "dinner", "name": "餐厅名", "reason": "推荐理由"}},
-  {{"time": "20:00", "type": "explore", "name": "地点名", "reason": "推荐理由"}}
+  {{"time": "11:30", "type": "lunch", "name": "餐厅名", "reason": "推荐理由", "location": "具体地址"}},
+  {{"time": "14:00", "type": "activity", "name": "活动名", "reason": "主活动", "location": "活动地址"}},
+  {{"time": "18:00", "type": "dinner", "name": "餐厅名", "reason": "推荐理由", "location": "具体地址"}},
+  {{"time": "20:00", "type": "explore", "name": "地点名", "reason": "推荐理由", "location": "具体地址"}}
 ]
-type 只能是 lunch/dinner/activity/explore。只返回 JSON。"""
+type 只能是 lunch/dinner/activity/explore。location 必须填具体地址。只返回 JSON。"""
 
     try:
         resp = await client.chat.completions.create(

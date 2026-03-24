@@ -25,6 +25,7 @@ export interface ScheduleItem {
   type: "lunch" | "dinner" | "activity" | "explore"
   name: string
   reason: string
+  location?: string
 }
 
 export interface Restaurant {
