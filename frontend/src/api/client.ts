@@ -61,10 +61,11 @@ async function request<T>(
 }
 
 export const api = {
-  listActivities(category?: string, signal?: AbortSignal, mood?: string): Promise<Activity[]> {
+  listActivities(category?: string, signal?: AbortSignal, mood?: string, q?: string): Promise<Activity[]> {
     const params = new URLSearchParams()
     if (category && category !== "全部") params.set("category", category)
     if (mood) params.set("mood", mood)
+    if (q) params.set("q", q)
     const qs = params.toString() ? `?${params}` : ""
     return request(`/activities${qs}`, { timeout: 15000, signal })
   },

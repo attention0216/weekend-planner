@@ -10,6 +10,7 @@ import { DiscoverPage } from "./pages/DiscoverPage"
 import { PlanPage } from "./pages/PlanPage"
 import { ChatPage } from "./pages/ChatPage"
 import { ProfilePage } from "./pages/ProfilePage"
+import { HistoryPage } from "./pages/HistoryPage"
 
 /* ── 用户名读写 ── */
 export function getUserName(): string {
@@ -66,6 +67,11 @@ function BottomNav() {
     { path: "/", label: "发现", icon: (active: boolean) => (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? "var(--color-accent)" : "var(--color-t3)"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="10"/><path d="m16.24 7.76-2.12 6.36-6.36 2.12 2.12-6.36 6.36-2.12z"/>
+      </svg>
+    )},
+    { path: "/history", label: "历史", icon: (active: boolean) => (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? "var(--color-accent)" : "var(--color-t3)"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
       </svg>
     )},
     { path: "/profile", label: "我的", icon: (active: boolean) => (
@@ -150,6 +156,7 @@ function App() {
           <main className="max-w-[680px] mx-auto px-5 pt-6 pb-24">
             <Routes>
               <Route path="/" element={<DiscoverPage />} />
+              <Route path="/history" element={<HistoryPage />} />
               <Route path="/plan/:id" element={<PlanPage />} />
               <Route path="/chat/:id" element={<ChatPage />} />
               <Route path="/profile" element={<ProfilePage />} />

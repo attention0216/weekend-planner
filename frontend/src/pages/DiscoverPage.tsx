@@ -34,6 +34,7 @@ type WeatherDay = {
 export function DiscoverPage() {
   const [category, setCategory] = useState("全部")
   const [mood, setMood] = useState("")
+  const [search, setSearch] = useState("")
   const [activities, setActivities] = useState<Activity[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -42,6 +43,7 @@ export function DiscoverPage() {
   const navigate = useNavigate()
   const abortRef = useRef<AbortController | null>(null)
   const restoredRef = useRef(false)
+  const searchTimer = useRef<ReturnType<typeof setTimeout>>()
 
   /* ── 附近推荐 ── */
   const [nearbyMode, setNearbyMode] = useState(false)
@@ -67,7 +69,7 @@ export function DiscoverPage() {
 
     setLoading(true)
     setError("")
-    api.listActivities(mood ? "" : category, ctrl.signal, mood || undefined)
+    api.listActivities(mood ? "" : category, ctrl.signal, mood || undefined, search || undefined)
       .then((data) => {
         if (!ctrl.signal.aborted) {
           setActivities(data)
@@ -81,7 +83,7 @@ export function DiscoverPage() {
       .finally(() => { if (!ctrl.signal.aborted) setLoading(false) })
 
     return () => ctrl.abort()
-  }, [category, nearbyMode, mood])
+  }, [category, nearbyMode, mood, search])
 
   function handlePlan(aid: string) { saveScroll(); navigate(`/plan/${aid}`) }
 
@@ -110,6 +112,15 @@ export function DiscoverPage() {
   function handleCategory(cat: string) {
     setCategory(cat)
     setMood("")
+    setSearch("")
+  }
+
+  function handleSearch(value: string) {
+    clearTimeout(searchTimer.current)
+    searchTimer.current = setTimeout(() => {
+      setSearch(value)
+      if (value) { setMood(""); setCategory("全部") }
+    }, 300)
   }
 
   /* ── 附近推荐 ── */
@@ -196,6 +207,19 @@ export function DiscoverPage() {
             {m.label}
           </button>
         ))}
+      </div>
+
+      {/* ── 搜索栏 ── */}
+      <div className="relative">
+        <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--color-t3)]" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        <input
+          type="text"
+          placeholder="搜索活动..."
+          onChange={(e) => handleSearch(e.target.value)}
+          className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[var(--color-bg-card)] text-[13px] text-[var(--color-t1)] placeholder:text-[var(--color-t3)] shadow-card outline-none focus:ring-2 focus:ring-[var(--color-accent)]/30 transition-shadow"
+        />
       </div>
 
       {/* ── 操作栏 ── */}

@@ -249,11 +249,21 @@ MOOD_CATEGORIES: dict[str, list[str]] = {
 async def api_list_activities(
     category: str = Query("", description="分类筛选"),
     mood: str = Query("", description="心情筛选"),
+    q: str = Query("", description="关键词搜索"),
     limit: int = Query(50, ge=1, le=200),
 ):
     all_acts = await _list_activities(limit=500)
 
-    if mood and mood in MOOD_CATEGORIES:
+    # ── 关键词搜索 ──
+    if q:
+        q_lower = q.lower()
+        all_acts = [a for a in all_acts if
+            q_lower in a.get("title", "").lower() or
+            q_lower in a.get("category", "").lower() or
+            q_lower in a.get("location", "").lower() or
+            q_lower in a.get("description", "").lower()
+        ]
+    elif mood and mood in MOOD_CATEGORIES:
         keywords = MOOD_CATEGORIES[mood]
         all_acts = [a for a in all_acts if any(
             kw in a.get("category", "").lower() or kw in a.get("title", "").lower()

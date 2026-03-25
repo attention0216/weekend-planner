@@ -30,6 +30,27 @@ function toggleFavorite(id: string): boolean {
   } catch { return false }
 }
 
+/* ── 规划历史管理 ── */
+function savePlanHistory(plan: Plan) {
+  try {
+    const key = "plan_history"
+    const history = JSON.parse(localStorage.getItem(key) || "[]") as Array<{
+      id: string; title: string; date: string; category: string; location: string; planTime: string
+    }>
+    const entry = {
+      id: plan.activity.id,
+      title: plan.activity.title,
+      date: plan.activity.date,
+      category: plan.activity.category,
+      location: plan.activity.location,
+      planTime: new Date().toISOString(),
+    }
+    const filtered = history.filter((h) => h.id !== entry.id)
+    filtered.unshift(entry)
+    localStorage.setItem(key, JSON.stringify(filtered.slice(0, 30)))
+  } catch { /* quota exceeded — ignore */ }
+}
+
 export function PlanPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -50,6 +71,7 @@ export function PlanPage() {
     if (cached) {
       setPlan(cached)
       setLoading(false)
+      savePlanHistory(cached)
       return
     }
 
@@ -63,6 +85,7 @@ export function PlanPage() {
       .then((p) => {
         setPlan(p)
         setCachedPlan(id, p)
+        savePlanHistory(p)
       })
       .catch((e) => {
         if (e instanceof DOMException && e.name === "AbortError") return
