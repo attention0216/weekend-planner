@@ -210,6 +210,11 @@ async def generate_plan(activity: dict, nearby_restaurants: list, nearby_spots: 
     if not LLM_API_KEY:
         return _fallback_plan(activity)
 
+    # ── 智能时段：注入当前时间，避免规划已过去的时段 ──
+    from datetime import datetime
+    now = datetime.now()
+    time_hint = f"\n## 当前时间\n现在是 {now.strftime('%Y-%m-%d %H:%M')}（{['周一','周二','周三','周四','周五','周六','周日'][now.weekday()]}）。请从现在之后的时间开始规划，跳过已过去的时段。\n"
+
     profile_section = ""
     if profile_hint:
         profile_section = f"\n## 用户偏好（务必满足，这是关键需求）\n{profile_hint}\n"
@@ -235,7 +240,7 @@ async def generate_plan(activity: dict, nearby_restaurants: list, nearby_spots: 
 
 ## 附近景点/商圈
 {json.dumps(nearby_spots[:5], ensure_ascii=False, indent=2)}
-{metro_section}{profile_section}
+{metro_section}{profile_section}{time_hint}
 ## 要求
 1. 围绕主活动编排整天日程
 2. 餐厅优先选小红书推荐的，没有则从高德 POI 选
@@ -269,7 +274,11 @@ async def generate_chat_response(activity: dict, current_plan: list, user_messag
     if profile_hint:
         profile_section = f"\n## 用户偏好（务必满足）\n{profile_hint}\n"
 
-    prompt = f"""你是一个周末出行规划师。用户已有日程，现在想调整。
+    from datetime import datetime
+    now = datetime.now()
+    now_str = f"{now.strftime('%Y-%m-%d %H:%M')}（{['周一','周二','周三','周四','周五','周六','周日'][now.weekday()]}）"
+
+    prompt = f"""你是一个周末出行规划师。用户已有日程，现在想调整。当前时间：{now_str}
 
 ## 当前日程
 {json.dumps(current_plan, ensure_ascii=False, indent=2)}

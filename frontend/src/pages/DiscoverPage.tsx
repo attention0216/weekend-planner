@@ -1,6 +1,6 @@
 /* ======================================================
- * 活动发现页 — Apple Store 风格
- * 大标题 · 动态分类 · 换一批 · 附近推荐 · 滚动记忆
+ * 活动发现页 — V8 天气感知 + 心情发现
+ * 天气卡片 · 心情气泡 · 帮我选 FAB · 动态分类
  * ====================================================== */
 
 import { useState, useEffect, useRef } from "react"
@@ -18,12 +18,27 @@ function restoreScroll() {
   if (y > 0) requestAnimationFrame(() => window.scrollTo(0, y))
 }
 
+/* ── 心情配置 ── */
+const MOODS = [
+  { key: "relax", label: "想放松", emoji: "🧘" },
+  { key: "social", label: "想社交", emoji: "🎉" },
+  { key: "adventure", label: "想冒险", emoji: "🏔️" },
+  { key: "quiet", label: "想安静", emoji: "📚" },
+] as const
+
+type WeatherDay = {
+  date: string; condition: string; code: string; emoji: string
+  temp_high: number; temp_low: number; prefer_indoor: boolean
+}
+
 export function DiscoverPage() {
   const [category, setCategory] = useState("全部")
+  const [mood, setMood] = useState("")
   const [activities, setActivities] = useState<Activity[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [refreshing, setRefreshing] = useState(false)
+  const [weather, setWeather] = useState<WeatherDay[]>([])
   const navigate = useNavigate()
   const abortRef = useRef<AbortController | null>(null)
   const restoredRef = useRef(false)
@@ -38,6 +53,12 @@ export function DiscoverPage() {
   } | null>(null)
   const [nearbyError, setNearbyError] = useState("")
 
+  /* ── 加载天气 ── */
+  useEffect(() => {
+    api.weather().then(setWeather).catch(() => {})
+  }, [])
+
+  /* ── 加载活动 ── */
   useEffect(() => {
     if (nearbyMode) return
     abortRef.current?.abort()
@@ -46,7 +67,7 @@ export function DiscoverPage() {
 
     setLoading(true)
     setError("")
-    api.listActivities(category, ctrl.signal)
+    api.listActivities(mood ? "" : category, ctrl.signal, mood || undefined)
       .then((data) => {
         if (!ctrl.signal.aborted) {
           setActivities(data)
@@ -60,21 +81,35 @@ export function DiscoverPage() {
       .finally(() => { if (!ctrl.signal.aborted) setLoading(false) })
 
     return () => ctrl.abort()
-  }, [category, nearbyMode])
+  }, [category, nearbyMode, mood])
 
   function handlePlan(aid: string) { saveScroll(); navigate(`/plan/${aid}`) }
 
-  /* ── 换一批 ── */
   function handleRefresh() {
     setRefreshing(true)
     api.refresh()
-      .then(() => {
-        /* 刷新后重新加载列表 */
-        return api.listActivities(category)
-      })
+      .then(() => api.listActivities(category))
       .then(setActivities)
       .catch(() => {})
       .finally(() => setRefreshing(false))
+  }
+
+  /* ── 帮我选：随机活动直接规划 ── */
+  function handleLucky() {
+    if (activities.length === 0) return
+    const pick = activities[Math.floor(Math.random() * activities.length)]
+    saveScroll()
+    navigate(`/plan/${pick.id}`)
+  }
+
+  function handleMood(key: string) {
+    setMood((prev) => prev === key ? "" : key)
+    setCategory("全部")
+  }
+
+  function handleCategory(cat: string) {
+    setCategory(cat)
+    setMood("")
   }
 
   /* ── 附近推荐 ── */
@@ -98,7 +133,7 @@ export function DiscoverPage() {
           .finally(() => setNearbyLoading(false))
       },
       (err) => {
-        const msg = err.code === 1 ? "请允许定位权限后重试" : "获取位置失败，请稍后重试"
+        const msg = err.code === 1 ? "请允许定位权限后重试" : "获取位置失败"
         setNearbyError(msg)
         setNearbyLoading(false)
       },
@@ -106,16 +141,61 @@ export function DiscoverPage() {
     )
   }
 
+  const todayWeather = weather[0]
+
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
+      {/* ── 天气卡片 ── */}
+      {todayWeather && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-[var(--color-bg-card)] shadow-card animate-fade-up">
+          <span className="text-[28px]">{todayWeather.emoji}</span>
+          <div className="flex-1">
+            <div className="text-[14px] font-semibold text-[var(--color-t1)]">
+              {todayWeather.condition} {todayWeather.temp_low}°~{todayWeather.temp_high}°
+            </div>
+            <div className="text-[12px] text-[var(--color-t3)]">
+              {todayWeather.prefer_indoor ? "适合室内活动" : "适合户外出行"}
+            </div>
+          </div>
+          {weather.length > 1 && (
+            <div className="flex gap-2">
+              {weather.slice(1, 3).map((w) => (
+                <div key={w.date} className="text-center">
+                  <div className="text-[16px]">{w.emoji}</div>
+                  <div className="text-[10px] text-[var(--color-t3)]">{w.temp_high}°</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Apple 风格大标题 ── */}
-      <div className="pt-4 pb-2">
+      <div>
         <h1 className="text-[32px] font-extrabold tracking-[-0.05em] leading-[1.1] text-[var(--color-t1)]">
-          周末去哪玩
+          发现
         </h1>
-        <p className="text-[15px] text-[var(--color-t3)] mt-2 tracking-[-0.01em] leading-relaxed">
-          选一个感兴趣的活动，AI 帮你规划完整一天
+        <p className="text-[14px] text-[var(--color-t3)] mt-1">
+          选一个活动，AI 帮你规划完整一天
         </p>
+      </div>
+
+      {/* ── 心情气泡 ── */}
+      <div className="flex gap-2 overflow-x-auto scrollbar-none -mx-1 px-1">
+        {MOODS.map((m) => (
+          <button
+            key={m.key}
+            onClick={() => handleMood(m.key)}
+            className={`shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-full text-[13px] font-medium transition-all duration-200 ${
+              mood === m.key
+                ? "bg-[var(--color-accent)] text-white shadow-card"
+                : "bg-[var(--color-bg-card)] text-[var(--color-t2)] shadow-card hover:shadow-card-hover"
+            }`}
+          >
+            <span>{m.emoji}</span>
+            {m.label}
+          </button>
+        ))}
       </div>
 
       {/* ── 操作栏 ── */}
@@ -137,13 +217,19 @@ export function DiscoverPage() {
           </button>
         </div>
 
-        {!nearbyMode && (
+        {!nearbyMode && !mood && (
           <CategoryFilter
             active={category}
-            onChange={setCategory}
+            onChange={handleCategory}
             onRefresh={handleRefresh}
             refreshing={refreshing}
           />
+        )}
+
+        {mood && (
+          <div className="text-[12px] text-[var(--color-accent)] font-medium">
+            {MOODS.find((m) => m.key === mood)?.emoji} 为你筛选「{MOODS.find((m) => m.key === mood)?.label}」相关活动
+          </div>
         )}
       </div>
 
@@ -161,7 +247,7 @@ export function DiscoverPage() {
           )}
           {nearbyData && !nearbyLoading && (
             <>
-              <div className="text-[13px] text-[var(--color-t3)] font-medium">📍 {nearbyData.location_name}</div>
+              <div className="text-[13px] text-[var(--color-t3)] font-medium">{nearbyData.location_name}</div>
               {nearbyData.nearby_restaurants.length > 0 && (
                 <div>
                   <h3 className="text-[18px] font-bold tracking-[-0.03em] text-[var(--color-t1)] mb-3">附近吃什么</h3>
@@ -241,12 +327,25 @@ export function DiscoverPage() {
               {activities.length === 0 && (
                 <div className="text-center py-20">
                   <p className="text-[18px] font-bold text-[var(--color-t1)]">暂无活动</p>
-                  <p className="text-[13px] text-[var(--color-t3)] mt-2">点击「换一批」获取新活动</p>
+                  <p className="text-[13px] text-[var(--color-t3)] mt-2">换个心情或分类试试</p>
                 </div>
               )}
             </>
           )}
         </>
+      )}
+
+      {/* ── 帮我选 FAB ── */}
+      {!nearbyMode && activities.length > 0 && (
+        <button
+          onClick={handleLucky}
+          className="fixed bottom-20 right-5 w-14 h-14 rounded-full gradient-hero text-white shadow-elevated flex items-center justify-center z-40 active:scale-95 transition-transform animate-scale-in"
+          aria-label="帮我选"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM17 17m-3 0a3 3 0 1 0 6 0 3 3 0 1 0-6 0" />
+          </svg>
+        </button>
       )}
     </div>
   )

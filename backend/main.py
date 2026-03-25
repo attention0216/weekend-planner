@@ -136,14 +136,6 @@ async def health():
     return {"status": "ok", "activities_count": cnt, "data_layer": "github" if USE_GITHUB else "sqlite"}
 
 
-@app.get("/api/activities")
-async def api_list_activities(
-    category: str = Query("", description="分类筛选"),
-    limit: int = Query(50, ge=1, le=200),
-):
-    return await _list_activities(category=category, limit=limit)
-
-
 @app.get("/api/activities/{activity_id}")
 async def api_get_activity(activity_id: str):
     activity = await _get_activity(activity_id)
@@ -237,7 +229,41 @@ def api_config():
     return {"default_address": DEFAULT_ADDRESS}
 
 
-# ── 用户数据 API（仅 GitHub 模式可用）──
+@app.get("/api/weather")
+async def api_weather():
+    """获取未来3天天气预报（北京）"""
+    from weather import get_forecast
+    return await get_forecast()
+
+
+# ── 心情 → 分类映射 ──
+MOOD_CATEGORIES: dict[str, list[str]] = {
+    "relax": ["展览", "咖啡", "书店", "公园", "spa"],
+    "social": ["读书会", "运动", "聚会", "脱口秀", "桌游"],
+    "adventure": ["户外", "市集", "探店", "徒步", "骑行"],
+    "quiet": ["展览", "书店", "博物馆", "电影", "音乐"],
+}
+
+
+@app.get("/api/activities")
+async def api_list_activities(
+    category: str = Query("", description="分类筛选"),
+    mood: str = Query("", description="心情筛选"),
+    limit: int = Query(50, ge=1, le=200),
+):
+    all_acts = await _list_activities(limit=500)
+
+    if mood and mood in MOOD_CATEGORIES:
+        keywords = MOOD_CATEGORIES[mood]
+        all_acts = [a for a in all_acts if any(
+            kw in a.get("category", "").lower() or kw in a.get("title", "").lower()
+            for kw in keywords
+        )]
+    elif category and category != "全部":
+        all_acts = [a for a in all_acts if a.get("category") == category]
+
+    all_acts.sort(key=lambda a: a.get("date", ""))
+    return all_acts[:limit]
 
 class UserData(BaseModel):
     favorites: list[str] = []
