@@ -6,7 +6,12 @@
 import type { Activity, Plan } from "../types"
 import { loadProfile } from "../pages/ProfilePage"
 
-const BASE = "/api"
+const BASE = import.meta.env.VITE_API_URL || "/api"
+
+/* ── 获取当前用户名 ── */
+function userName(): string {
+  return localStorage.getItem("user_name") || ""
+}
 
 async function request<T>(
   url: string,
@@ -31,7 +36,10 @@ async function request<T>(
 
   try {
     const resp = await fetch(`${BASE}${url}`, {
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(userName() ? { "X-User-Name": userName() } : {}),
+      },
       ...fetchOptions,
       signal: timeoutCtrl.signal,
     })

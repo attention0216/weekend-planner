@@ -4,6 +4,7 @@
  * ====================================================== */
 
 import { useState, useMemo } from "react"
+import { navigateToItem, amapNavHref, amapSearchUrl } from "../utils/amap"
 import type { ScheduleItem } from "../types"
 
 interface Props {
@@ -17,18 +18,6 @@ const typeConfig: Record<string, { icon: string; color: string; label: string }>
   activity: { icon: "🎯", color: "bg-[var(--color-accent)]", label: "主活动" },
   explore:  { icon: "🚶", color: "bg-[var(--color-tech-green)]", label: "探索" },
   commute:  { icon: "🚇", color: "bg-[#5b7bb5]", label: "回程" },
-}
-
-/* ── 高德导航 URI ── */
-function navUrl(item: ScheduleItem): string {
-  const dest = item.location || item.name
-  return `https://uri.amap.com/navigation?to=0,0,${encodeURIComponent(dest)}&mode=walk&callnative=1`
-}
-
-/* ── 高德搜索 URI ── */
-function searchUrl(item: ScheduleItem): string | null {
-  const kw = item.location || item.name
-  return kw ? `https://uri.amap.com/search?keyword=${encodeURIComponent(kw)}` : null
 }
 
 /* ── 解析 HH:MM 为分钟数 ── */
@@ -143,11 +132,8 @@ export function Timeline({ items, activityUrl }: Props) {
                     </div>
                   )}
                   <div className="flex gap-2 flex-wrap">
-                    <a
-                      href={navUrl(item)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); navigateToItem(item) }}
                       className={`text-[12px] font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 ${
                         isMain
                           ? "bg-white/25 text-white hover:bg-white/35"
@@ -158,10 +144,10 @@ export function Timeline({ items, activityUrl }: Props) {
                         <path d="M3 11l19-9-9 19-2-8-8-2z" />
                       </svg>
                       {isCommute ? "导航到地铁站" : "导航到这里"}
-                    </a>
-                    {searchUrl(item) && (
+                    </button>
+                    {amapSearchUrl(item.location || item.name) && (
                       <a
-                        href={searchUrl(item)!}
+                        href={amapSearchUrl(item.location || item.name)!}
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
@@ -192,11 +178,9 @@ export function Timeline({ items, activityUrl }: Props) {
 
             {/* 下一站快捷导航 */}
             {nextItem && (
-              <a
-                href={navUrl(nextItem)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 mt-2 ml-1 px-3 py-2 rounded-lg bg-[var(--color-bg-dim)] hover:bg-[var(--color-border)] transition-colors group"
+              <button
+                onClick={() => navigateToItem(nextItem)}
+                className="flex items-center gap-2 mt-2 ml-1 px-3 py-2 rounded-lg bg-[var(--color-bg-dim)] hover:bg-[var(--color-border)] transition-colors group w-full text-left"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
                   <path d="M3 11l19-9-9 19-2-8-8-2z" />
@@ -207,7 +191,7 @@ export function Timeline({ items, activityUrl }: Props) {
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="text-[var(--color-t3)] group-hover:text-[var(--color-accent)] ml-auto shrink-0 transition-colors">
                   <path d="M3 1l4 4-4 4" />
                 </svg>
-              </a>
+              </button>
             )}
           </div>
         )

@@ -1,14 +1,24 @@
 /* ======================================================
- * 根组件 — V6 沉浸式布局
- * ErrorBoundary · 毛玻璃导航 · 底部标签栏 · safe-area
+ * 根组件 — V7 沉浸式布局
+ * AuthGate · ErrorBoundary · 毛玻璃导航 · 底部标签栏
  * ====================================================== */
 
-import { Component, type ReactNode } from "react"
+import { Component, useState, type ReactNode } from "react"
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router"
+import { LoginCard } from "./components/LoginCard"
 import { DiscoverPage } from "./pages/DiscoverPage"
 import { PlanPage } from "./pages/PlanPage"
 import { ChatPage } from "./pages/ChatPage"
 import { ProfilePage } from "./pages/ProfilePage"
+
+/* ── 用户名读写 ── */
+export function getUserName(): string {
+  return localStorage.getItem("user_name") || ""
+}
+
+export function setUserName(name: string): void {
+  localStorage.setItem("user_name", name)
+}
 
 /* ── 错误边界：防止白屏 ── */
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -50,7 +60,6 @@ function BottomNav() {
   const location = useLocation()
   const path = location.pathname
 
-  /* 详情页/聊天页不显示底部导航 */
   if (path.startsWith("/plan/") || path.startsWith("/chat/")) return null
 
   const tabs = [
@@ -91,27 +100,53 @@ function BottomNav() {
   )
 }
 
+/* ── 主 Header — 显示用户名首字母 ── */
+function AppHeader() {
+  const name = getUserName()
+  const initial = name ? name[0].toUpperCase() : "?"
+
+  return (
+    <header className="glass sticky top-0 z-50 border-b border-[var(--color-border)]/30">
+      <div className="max-w-[680px] mx-auto px-5 h-[52px] flex items-center justify-between">
+        <a href="/" className="flex items-center gap-2 text-[15px] font-bold tracking-[-0.04em] text-[var(--color-t1)]">
+          <span className="w-7 h-7 rounded-lg gradient-hero flex items-center justify-center text-white text-[13px] shadow-card">
+            W
+          </span>
+          周末去哪玩
+        </a>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-medium text-[var(--color-t3)] tracking-wide">
+            {new Date().toLocaleDateString("zh-CN", { month: "short", day: "numeric", weekday: "short" })}
+          </span>
+          <div className="w-7 h-7 rounded-full bg-[var(--color-accent-soft)] flex items-center justify-center text-[12px] font-bold text-[var(--color-accent)]">
+            {initial}
+          </div>
+        </div>
+      </div>
+    </header>
+  )
+}
+
 function App() {
+  const [loggedIn, setLoggedIn] = useState(() => !!getUserName())
+
+  if (!loggedIn) {
+    return (
+      <ErrorBoundary>
+        <LoginCard onLogin={(name) => {
+          setUserName(name)
+          setLoggedIn(true)
+        }} />
+      </ErrorBoundary>
+    )
+  }
+
   return (
     <ErrorBoundary>
       <BrowserRouter>
         <div className="min-h-[100dvh] bg-[var(--color-bg)]">
-          {/* 毛玻璃导航 — Apple 风格 */}
-          <header className="glass sticky top-0 z-50 border-b border-[var(--color-border)]/30">
-            <div className="max-w-[680px] mx-auto px-5 h-[52px] flex items-center justify-between">
-              <a href="/" className="flex items-center gap-2 text-[15px] font-bold tracking-[-0.04em] text-[var(--color-t1)]">
-                <span className="w-7 h-7 rounded-lg gradient-hero flex items-center justify-center text-white text-[13px] shadow-card">
-                  W
-                </span>
-                周末去哪玩
-              </a>
-              <span className="text-[11px] font-medium text-[var(--color-t3)] tracking-wide">
-                {new Date().toLocaleDateString("zh-CN", { month: "short", day: "numeric", weekday: "short" })}
-              </span>
-            </div>
-          </header>
+          <AppHeader />
 
-          {/* 内容区 */}
           <main className="max-w-[680px] mx-auto px-5 pt-6 pb-24">
             <Routes>
               <Route path="/" element={<DiscoverPage />} />
@@ -121,7 +156,6 @@ function App() {
             </Routes>
           </main>
 
-          {/* 底部导航 */}
           <BottomNav />
         </div>
       </BrowserRouter>
