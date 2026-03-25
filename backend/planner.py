@@ -3,16 +3,57 @@ from __future__ import annotations
 配套规划引擎
 活动为锚点 → 高德搜附近 → 小红书餐厅推荐(Tavily) → LLM 编排日程
 """
+import asyncio
 import json
 import logging
 import re
 
 import httpx
-from openai import AsyncOpenAI
 
-from config import AMAP_KEY, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, TAVILY_API_KEY
+from config import AMAP_KEY, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, TAVILY_API_KEY, SAVED_PROXY_ENV
 
 logger = logging.getLogger(__name__)
+
+
+# ======================================================
+#  LLM 调用（curl 绕过系统 Python 的古老 LibreSSL）
+# ======================================================
+
+async def _llm_chat(prompt: str, *, max_tokens: int = 1500, temperature: float = 0.4) -> str | None:
+    """通过 curl 调用 OpenAI 兼容 API，绕过 Python SSL 兼容性问题"""
+    import os
+    payload = json.dumps({
+        "model": LLM_MODEL,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "messages": [{"role": "user", "content": prompt}],
+    }, ensure_ascii=False)
+
+    # curl 需要代理才能完成 TLS（Python ssl 模块太旧无法直连）
+    curl_env = {**os.environ, **SAVED_PROXY_ENV}
+
+    proc = await asyncio.create_subprocess_exec(
+        "curl", "-s", "--max-time", "90",
+        "-X", "POST", f"{LLM_BASE_URL}/chat/completions",
+        "-H", "Content-Type: application/json",
+        "-H", f"Authorization: Bearer {LLM_API_KEY}",
+        "-d", payload,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env=curl_env,
+    )
+    stdout, stderr = await proc.communicate()
+
+    if proc.returncode != 0:
+        logger.error(f"LLM curl 失败: rc={proc.returncode}, stderr={stderr.decode()[:200]}")
+        return None
+
+    try:
+        data = json.loads(stdout.decode())
+        return data["choices"][0]["message"]["content"].strip()
+    except (json.JSONDecodeError, KeyError, IndexError) as e:
+        logger.error(f"LLM 响应解析失败: {e}, raw={stdout.decode()[:300]}")
+        return None
 
 
 def _parse_llm_json(text: str):
@@ -124,8 +165,6 @@ async def search_xiaohongshu_restaurants(location: str, profile_hint: str = "") 
     if not xhs_context:
         xhs_context = "无搜索结果，请基于你对该地点附近的餐厅知识推荐。"
 
-    client = AsyncOpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
-
     profile_section = ""
     if profile_hint:
         profile_section = f"\n## 用户偏好（务必满足）\n{profile_hint}\n"
@@ -155,18 +194,10 @@ JSON 数组：
 
 只返回 JSON。"""
 
-    try:
-        resp = await client.chat.completions.create(
-            model=LLM_MODEL,
-            max_tokens=1500,
-            temperature=0.4,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = resp.choices[0].message.content.strip()
+    text = await _llm_chat(prompt)
+    if text:
         result = _parse_llm_json(text)
         return result if isinstance(result, list) else []
-    except Exception as e:
-        logger.error(f"小红书餐厅结构化失败: {e}")
     return []
 
 
@@ -178,8 +209,6 @@ async def generate_plan(activity: dict, nearby_restaurants: list, nearby_spots: 
     """LLM 生成配套日程（含回程规划）"""
     if not LLM_API_KEY:
         return _fallback_plan(activity)
-
-    client = AsyncOpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
 
     profile_section = ""
     if profile_hint:
@@ -224,27 +253,17 @@ async def generate_plan(activity: dict, nearby_restaurants: list, nearby_spots: 
 ]
 type 只能是 lunch/dinner/activity/explore/commute。location 必须填具体地址。只返回 JSON。"""
 
-    try:
-        resp = await client.chat.completions.create(
-            model=LLM_MODEL,
-            max_tokens=1500,
-            temperature=0.4,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = resp.choices[0].message.content.strip()
+    text = await _llm_chat(prompt)
+    if text:
         result = _parse_llm_json(text)
         return result if isinstance(result, list) else _fallback_plan(activity)
-    except Exception as e:
-        logger.error(f"日程规划失败: {e}")
-        return _fallback_plan(activity)
+    return _fallback_plan(activity)
 
 
 async def generate_chat_response(activity: dict, current_plan: list, user_message: str, profile_hint: str = "") -> tuple[str, list[dict]]:
     """LLM 对话调整日程"""
     if not LLM_API_KEY:
         return f"收到你的调整意见：「{user_message}」。请配置 LLM API Key 后生效。", current_plan
-
-    client = AsyncOpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
 
     profile_section = ""
     if profile_hint:
@@ -266,21 +285,12 @@ async def generate_chat_response(activity: dict, current_plan: list, user_messag
 {{"reply": "你的回应（简洁温暖）", "schedule": [...]}}
 schedule 格式同之前（type: lunch/dinner/activity/explore/commute）。必须保留 commute 回程项。只返回 JSON。"""
 
-    try:
-        resp = await client.chat.completions.create(
-            model=LLM_MODEL,
-            max_tokens=1500,
-            temperature=0.5,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = resp.choices[0].message.content.strip()
+    text = await _llm_chat(prompt, temperature=0.5)
+    if text:
         result = _parse_llm_json(text)
         if isinstance(result, dict):
             return result.get("reply", "已调整"), result.get("schedule", current_plan)
-        return "抱歉，调整失败", current_plan
-    except Exception as e:
-        logger.error(f"对话调整失败: {e}")
-        return f"抱歉，调整失败：{e}", current_plan
+    return "抱歉，调整失败", current_plan
 
 
 def _fallback_plan(activity: dict) -> list[dict]:

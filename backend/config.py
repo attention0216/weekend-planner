@@ -10,9 +10,11 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
-# ── 清除系统代理（避免 httpx SOCKS 代理报错）──
-for _proxy_var in ("http_proxy", "https_proxy", "all_proxy",
-                   "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
+# ── 保存原始代理后清除（httpx 不走代理，curl 子进程需要）──
+_PROXY_KEYS = ("http_proxy", "https_proxy", "all_proxy",
+               "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY")
+SAVED_PROXY_ENV = {k: os.environ[k] for k in _PROXY_KEYS if k in os.environ}
+for _proxy_var in _PROXY_KEYS:
     os.environ.pop(_proxy_var, None)
 
 DB_PATH = BASE_DIR / "data" / "weekend.db"
@@ -30,6 +32,7 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 
 # ── 城市配置 ──
 CITY_NAME = os.getenv("CITY_NAME", "北京")
+DEFAULT_ADDRESS = os.getenv("DEFAULT_ADDRESS", "北京市昌平区龙锦苑四区12号楼")
 
 # ── 聚合配置 ──
 AGGREGATION_INTERVAL_HOURS = int(os.getenv("AGGREGATION_INTERVAL_HOURS", "6"))
