@@ -1,8 +1,9 @@
 /* ======================================================
- * 活动卡片 — 有机极简风
- * 微阴影 · 紧凑字距 · 自然绿强调 · 原链接
+ * 活动卡片 — Laper × Apple 风格
+ * 大气留白 · 精致阴影 · 可展开预览 · 原链接
  * ====================================================== */
 
+import { useState } from "react"
 import type { Activity } from "../types"
 import { formatDate } from "../utils"
 
@@ -11,81 +12,125 @@ interface Props {
   onPlan: (id: string) => void
 }
 
-const categoryStyle: Record<string, string> = {
-  AI: "bg-[#e8f4e8] text-[#2d6a4f]",
-  读书会: "bg-[#e8ecf4] text-[#3d5a80]",
-  电影: "bg-[#f4e8e8] text-[#9b4d4d]",
-  景点: "bg-[var(--color-accent-light)] text-[var(--color-accent)]",
-  美食: "bg-[#f5f0e1] text-[#9b7d4c]",
-  活动: "bg-[var(--color-bg-dim)] text-[var(--color-t2)]",
+/* ── 分类颜色映射（动态分类兜底） ── */
+const colorMap: Record<string, string> = {
+  电影:   "bg-[#faf0f0] text-[#9b4d4d]",
+  展览:   "bg-[#f0f3fa] text-[#4a5d8a]",
+  运动:   "bg-[#edf8f0] text-[#2d7a4f]",
+  户外:   "bg-[#edf8f0] text-[#2d7a4f]",
+  音乐:   "bg-[#faf5ed] text-[#8a6a30]",
+  演出:   "bg-[#faf5ed] text-[#8a6a30]",
+  脱口秀: "bg-[#faf5ed] text-[#8a6a30]",
+  美食:   "bg-[#fdf8ed] text-[#9b7d4c]",
+  市集:   "bg-[#f5f0fa] text-[#6a4d8a]",
+  读书会: "bg-[#f0f3fa] text-[#3d5a80]",
+  AI:     "bg-[#edf5ed] text-[#2d6a4f]",
 }
+const defaultColor = "bg-[var(--color-bg-dim)] text-[var(--color-t2)]"
 
 export function ActivityCard({ activity, onPlan }: Props) {
-  const pillClass = categoryStyle[activity.category] ?? categoryStyle["活动"]
+  const [expanded, setExpanded] = useState(false)
+  const pillClass = colorMap[activity.category] ?? defaultColor
 
   return (
-    <div className="shadow-card bg-[var(--color-bg-card)] rounded-2xl p-5 transition-all duration-200 hover:shadow-card-hover">
-      {/* 头部 */}
-      <div className="flex items-center justify-between mb-3">
-        <span className={`text-[11px] font-semibold tracking-[0.05em] uppercase px-2.5 py-[3px] rounded-md ${pillClass}`}>
-          {activity.category}
-        </span>
-        <span className="text-[11px] text-[var(--color-t3)]">{activity.source}</span>
-      </div>
-
-      {/* 标题 */}
-      <h3 className="text-[16px] font-semibold leading-snug tracking-[-0.02em] text-[var(--color-t1)] mb-2">
-        {activity.title}
-      </h3>
-
-      {/* 描述 */}
-      {activity.description && (
-        <p className="text-[13px] leading-relaxed text-[var(--color-t2)] mb-3 line-clamp-2">
-          {activity.description}
-        </p>
-      )}
-
-      {/* 信息行 */}
-      <div className="flex flex-col gap-1.5 text-[12px] text-[var(--color-t3)] mb-4">
-        <div className="flex items-center gap-2">
-          <span className="w-4 text-center text-[11px]" aria-hidden="true">📅</span>
-          <span>{formatDate(activity.date)}{activity.time ? ` · ${activity.time}` : ""}</span>
-        </div>
-        {activity.location && (
+    <div className="bg-[var(--color-bg-card)] rounded-2xl shadow-card transition-all duration-300 hover:shadow-card-hover overflow-hidden">
+      {/* 主体 — 可点击展开 */}
+      <div
+        className="p-5 cursor-pointer"
+        onClick={() => setExpanded(!expanded)}
+      >
+        {/* 头部行 */}
+        <div className="flex items-center justify-between mb-3">
+          <span className={`text-[11px] font-semibold tracking-[0.04em] px-2.5 py-[3px] rounded-full ${pillClass}`}>
+            {activity.category}
+          </span>
           <div className="flex items-center gap-2">
-            <span className="w-4 text-center text-[11px]" aria-hidden="true">📍</span>
-            <span className="truncate">{activity.location}</span>
+            {activity.source && (
+              <span className="text-[10px] text-[var(--color-t3)] font-medium">{activity.source}</span>
+            )}
+            <svg
+              width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="var(--color-t3)" strokeWidth="1.5" strokeLinecap="round"
+              className={`transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+            >
+              <path d="M3 4.5L6 7.5L9 4.5" />
+            </svg>
+          </div>
+        </div>
+
+        {/* 标题 */}
+        <h3 className="text-[17px] font-bold leading-snug tracking-[-0.03em] text-[var(--color-t1)] mb-1.5">
+          {activity.title}
+        </h3>
+
+        {/* 信息行 — 紧凑 */}
+        <div className="flex items-center gap-3 text-[12px] text-[var(--color-t3)]">
+          <span>{formatDate(activity.date)}{activity.time ? ` · ${activity.time}` : ""}</span>
+          <span className="font-semibold text-[var(--color-t1)]">
+            {activity.price === 0 ? "免费" : `¥${activity.price}`}
+          </span>
+        </div>
+
+        {activity.location && (
+          <div className="text-[12px] text-[var(--color-t3)] mt-1 truncate">
+            📍 {activity.location}
           </div>
         )}
       </div>
 
-      {/* 底部 */}
-      <div className="flex items-center justify-between pt-3 border-t border-[var(--color-divider)]">
-        <div className="flex items-center gap-3">
-          <span className="text-[15px] font-semibold tracking-[-0.02em] text-[var(--color-t1)]">
-            {activity.price === 0 ? "免费" : `¥${activity.price}`}
-          </span>
-          {/* 原链接 */}
-          {activity.url && (
-            <a
-              href={activity.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[12px] text-[var(--color-accent)] hover:underline"
-              aria-label={`查看${activity.title}详情`}
-            >
-              详情
-            </a>
+      {/* 展开预览区 */}
+      {expanded && (
+        <div className="px-5 pb-5 pt-0 animate-fade-up" style={{ animationDuration: "0.2s" }}>
+          {activity.description && (
+            <p className="text-[13px] leading-relaxed text-[var(--color-t2)] mb-4">
+              {activity.description}
+            </p>
           )}
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={(e) => { e.stopPropagation(); onPlan(activity.id) }}
+              className="flex-1 text-[13px] font-semibold text-white bg-[var(--color-t1)] hover:bg-[var(--color-accent-hover)] py-2.5 rounded-xl transition-colors duration-200 active:scale-[0.97]"
+            >
+              规划这一天
+            </button>
+            {activity.url && (
+              <a
+                href={activity.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="shrink-0 text-[12px] font-medium text-[var(--color-accent)] px-4 py-2.5 rounded-xl bg-[var(--color-accent-light)] hover:bg-[var(--color-accent-soft)] transition-colors"
+              >
+                查看详情 ↗
+              </a>
+            )}
+          </div>
         </div>
-        <button
-          onClick={() => onPlan(activity.id)}
-          aria-label={`规划${activity.title}的一天`}
-          className="text-[13px] font-medium text-white bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] px-5 py-2 rounded-lg transition-colors duration-200 min-h-[36px] active:scale-[0.97]"
-        >
-          规划这一天
-        </button>
-      </div>
+      )}
+
+      {/* 未展开时的快捷操作 */}
+      {!expanded && (
+        <div className="px-5 pb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {activity.url && (
+              <a
+                href={activity.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] text-[var(--color-accent)] hover:underline"
+              >
+                详情 ↗
+              </a>
+            )}
+          </div>
+          <button
+            onClick={() => onPlan(activity.id)}
+            className="text-[12px] font-semibold text-white bg-[var(--color-t1)] hover:bg-[var(--color-accent-hover)] px-5 py-2 rounded-xl transition-colors duration-200 active:scale-[0.97]"
+          >
+            规划这一天
+          </button>
+        </div>
+      )}
     </div>
   )
 }

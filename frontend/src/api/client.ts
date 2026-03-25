@@ -97,4 +97,12 @@ export const api = {
       timeout: 60000,
     })
   },
+
+  categories(): Promise<Array<{ name: string; count: number }>> {
+    return request("/categories", { timeout: 5000 })
+  },
+
+  config(): Promise<{ default_address: string }> {
+    return request("/config", { timeout: 5000 })
+  },
 }

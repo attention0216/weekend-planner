@@ -1,6 +1,6 @@
 /* ======================================================
- * 根组件 — Laper AI 风格布局
- * ErrorBoundary · 响应式 · 安全区域 · 底部导航
+ * 根组件 — V6 沉浸式布局
+ * ErrorBoundary · 毛玻璃导航 · 底部标签栏 · safe-area
  * ====================================================== */
 
 import { Component, type ReactNode } from "react"
@@ -96,12 +96,18 @@ function App() {
     <ErrorBoundary>
       <BrowserRouter>
         <div className="min-h-[100dvh] bg-[var(--color-bg)]">
-          {/* 毛玻璃导航 */}
-          <header className="glass sticky top-0 z-50 border-b border-[var(--color-border)]/50">
-            <div className="max-w-[680px] mx-auto px-5 h-[52px] flex items-center">
-              <a href="/" className="text-[15px] font-semibold tracking-[-0.03em] text-[var(--color-t1)]">
+          {/* 毛玻璃导航 — Apple 风格 */}
+          <header className="glass sticky top-0 z-50 border-b border-[var(--color-border)]/30">
+            <div className="max-w-[680px] mx-auto px-5 h-[52px] flex items-center justify-between">
+              <a href="/" className="flex items-center gap-2 text-[15px] font-bold tracking-[-0.04em] text-[var(--color-t1)]">
+                <span className="w-7 h-7 rounded-lg gradient-hero flex items-center justify-center text-white text-[13px] shadow-card">
+                  W
+                </span>
                 周末去哪玩
               </a>
+              <span className="text-[11px] font-medium text-[var(--color-t3)] tracking-wide">
+                {new Date().toLocaleDateString("zh-CN", { month: "short", day: "numeric", weekday: "short" })}
+              </span>
             </div>
           </header>
 

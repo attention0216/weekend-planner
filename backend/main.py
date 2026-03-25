@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from config import AGGREGATION_INTERVAL_HOURS, BASE_DIR
+from config import AGGREGATION_INTERVAL_HOURS, BASE_DIR, DEFAULT_ADDRESS
 from db import init_db, list_activities, get_activity, count_activities
 from aggregator import run_aggregation
 from planner import (
@@ -193,8 +193,26 @@ async def api_chat(req: ChatRequest):
 
 @app.post("/api/refresh")
 async def api_refresh():
+    """手动触发聚合 — 增量补充，不全部替换"""
     count = await run_aggregation()
     return {"refreshed": count, "total": count_activities()}
+
+
+@app.get("/api/categories")
+def api_categories():
+    """动态获取所有分类（从数据库中统计）"""
+    from db import get_conn
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT category, COUNT(*) as cnt FROM activities GROUP BY category ORDER BY cnt DESC"
+        ).fetchall()
+    return [{"name": r["category"], "count": r["cnt"]} for r in rows]
+
+
+@app.get("/api/config")
+def api_config():
+    """前端获取默认配置"""
+    return {"default_address": DEFAULT_ADDRESS}
 
 
 class NearbyRequest(BaseModel):

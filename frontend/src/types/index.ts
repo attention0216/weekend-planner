@@ -2,7 +2,8 @@
  * 核心数据类型 — 单一真相源
  * ====================================================== */
 
-export type Category = "AI" | "读书会" | "电影" | "景点" | "美食" | "活动" | "全部"
+/* 分类现在是动态的，不再硬编码 */
+export type Category = string
 
 export interface Activity {
   id: string

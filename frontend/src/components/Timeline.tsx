@@ -1,9 +1,9 @@
 /* ======================================================
- * 时间线组件 — 精致垂直连线 + 一键导航
- * 展开详情 · 导航到这里 · 下一站快捷导航
+ * 时间线组件 — 视觉分级 + 当前时间 + 一键导航
+ * 主活动放大 · 回程虚线 · 正在进行高亮 · 导航到这里
  * ====================================================== */
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import type { ScheduleItem } from "../types"
 
 interface Props {
@@ -19,7 +19,7 @@ const typeConfig: Record<string, { icon: string; color: string; label: string }>
   commute:  { icon: "🚇", color: "bg-[#5b7bb5]", label: "回程" },
 }
 
-/* ── 高德导航 URI（步行模式，从当前位置出发） ── */
+/* ── 高德导航 URI ── */
 function navUrl(item: ScheduleItem): string {
   const dest = item.location || item.name
   return `https://uri.amap.com/navigation?to=0,0,${encodeURIComponent(dest)}&mode=walk&callnative=1`
@@ -31,33 +31,81 @@ function searchUrl(item: ScheduleItem): string | null {
   return kw ? `https://uri.amap.com/search?keyword=${encodeURIComponent(kw)}` : null
 }
 
+/* ── 解析 HH:MM 为分钟数 ── */
+function parseTime(t: string): number {
+  const [h, m] = t.split(":").map(Number)
+  return (h || 0) * 60 + (m || 0)
+}
+
+/* ── 计算当前正在进行的项目索引 ── */
+function useCurrentIndex(items: ScheduleItem[]): number {
+  return useMemo(() => {
+    const now = new Date()
+    const nowMin = now.getHours() * 60 + now.getMinutes()
+    let current = -1
+    for (let i = 0; i < items.length; i++) {
+      if (parseTime(items[i].time) <= nowMin) current = i
+    }
+    return current
+  }, [items])
+}
+
 export function Timeline({ items, activityUrl }: Props) {
   const [expanded, setExpanded] = useState<number | null>(null)
+  const currentIdx = useCurrentIndex(items)
 
   return (
     <div className="relative ml-3">
-      {/* 竖线 */}
-      <div className="absolute left-[5px] top-3 bottom-3 w-[1.5px] bg-[var(--color-divider)]" />
+      {/* 竖线 — 已完成部分用品牌色 */}
+      <div className="absolute left-[6px] top-3 bottom-3 w-[1.5px] bg-[var(--color-divider)]" />
+      {currentIdx >= 0 && (
+        <div
+          className="absolute left-[6px] top-3 w-[1.5px] bg-[var(--color-accent)] transition-all duration-500"
+          style={{ height: `${Math.min((currentIdx + 1) / items.length * 100, 100)}%` }}
+        />
+      )}
 
       {items.map((item, i) => {
         const cfg = typeConfig[item.type] ?? { icon: "📌", color: "bg-[var(--color-t3)]", label: "其他" }
         const isMain = item.type === "activity"
+        const isCommute = item.type === "commute"
         const isExpanded = expanded === i
         const nextItem = items[i + 1]
+        const isCurrent = i === currentIdx
+        const isPast = currentIdx >= 0 && i < currentIdx
+
+        /* 圆点尺寸：主活动 15px，回程 9px，其余 11px */
+        const dotSize = isMain ? "w-[15px] h-[15px]" : isCommute ? "w-[9px] h-[9px]" : "w-[11px] h-[11px]"
+        const dotOffset = isMain ? "left-[-1px] top-[12px]" : isCommute ? "left-[1px] top-[16px]" : "left-0 top-[14px]"
 
         return (
-          <div key={`${item.time}-${i}`} className="relative pl-8 pb-5 last:pb-0 animate-fade-up" style={{ animationDelay: `${i * 80}ms` }}>
-            {/* 圆点 */}
-            <div className={`absolute left-0 top-[14px] w-[11px] h-[11px] rounded-full ${cfg.color} ring-[3px] ring-[var(--color-bg)]`} />
+          <div key={`${item.time}-${i}`} className={`relative pl-8 pb-5 last:pb-0 animate-fade-up`} style={{ animationDelay: `${i * 80}ms` }}>
+            {/* 回程项上方虚线段 */}
+            {isCommute && (
+              <div className="absolute left-[6px] -top-2 h-4 w-[1.5px] border-l-[1.5px] border-dashed border-[var(--color-divider)]" />
+            )}
 
-            {/* 卡片 — 可点击展开 */}
+            {/* 圆点 — 当前项脉动 */}
+            <div className={`absolute ${dotOffset} ${dotSize} rounded-full ${cfg.color} ring-[3px] ring-[var(--color-bg)] ${isCurrent ? "animate-pulse" : ""} ${isPast ? "opacity-60" : ""}`} />
+
+            {/* 正在进行标签 */}
+            {isCurrent && (
+              <div className="absolute -left-1 -top-5 text-[10px] font-semibold text-[var(--color-accent)] tracking-wide flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent)] animate-pulse" />
+                进行中
+              </div>
+            )}
+
+            {/* 卡片 */}
             <div
               onClick={() => setExpanded(isExpanded ? null : i)}
               className={`rounded-xl p-4 transition-all duration-200 cursor-pointer ${
                 isMain
                   ? "bg-[var(--color-accent)] text-white shadow-card"
-                  : "bg-[var(--color-bg-card)] shadow-card hover:shadow-card-hover"
-              }`}
+                  : isCommute
+                    ? "bg-[#f0f3f8] shadow-card hover:shadow-card-hover border border-dashed border-[#c5cfe0]"
+                    : "bg-[var(--color-bg-card)] shadow-card hover:shadow-card-hover"
+              } ${isCurrent ? "ring-2 ring-[var(--color-accent)] ring-offset-2" : ""} ${isPast ? "opacity-70" : ""}`}
             >
               <div className="flex items-baseline gap-2 mb-1">
                 <span className={`text-[12px] font-mono tabular-nums ${isMain ? "text-white/60" : "text-[var(--color-t3)]"}`}>
@@ -67,6 +115,12 @@ export function Timeline({ items, activityUrl }: Props) {
                 <span className={`text-[14px] font-semibold tracking-[-0.02em] flex-1 ${isMain ? "text-white" : "text-[var(--color-t1)]"}`}>
                   {item.name}
                 </span>
+                {/* 类型标签 */}
+                {isCommute && (
+                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-[#5b7bb5]/10 text-[#5b7bb5]">
+                    回程
+                  </span>
+                )}
                 {/* 展开指示器 */}
                 <svg
                   width="12" height="12" viewBox="0 0 12 12"
@@ -80,7 +134,7 @@ export function Timeline({ items, activityUrl }: Props) {
                 {item.reason}
               </p>
 
-              {/* 展开详情：地址 + 导航 + 查看 */}
+              {/* 展开详情 */}
               {isExpanded && (
                 <div className={`mt-3 pt-3 border-t flex flex-col gap-2 ${isMain ? "border-white/20" : "border-[var(--color-divider)]"}`}>
                   {item.location && (
@@ -89,7 +143,6 @@ export function Timeline({ items, activityUrl }: Props) {
                     </div>
                   )}
                   <div className="flex gap-2 flex-wrap">
-                    {/* 导航到这里 — 最重要的按钮 */}
                     <a
                       href={navUrl(item)}
                       target="_blank"
@@ -104,7 +157,7 @@ export function Timeline({ items, activityUrl }: Props) {
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M3 11l19-9-9 19-2-8-8-2z" />
                       </svg>
-                      导航到这里
+                      {isCommute ? "导航到地铁站" : "导航到这里"}
                     </a>
                     {searchUrl(item) && (
                       <a
@@ -137,7 +190,7 @@ export function Timeline({ items, activityUrl }: Props) {
               )}
             </div>
 
-            {/* ── 下一站快捷导航条 ── */}
+            {/* 下一站快捷导航 */}
             {nextItem && (
               <a
                 href={navUrl(nextItem)}
