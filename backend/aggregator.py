@@ -3,6 +3,7 @@ from __future__ import annotations
 活动聚合引擎
 Tavily 搜索 + LLM 结构化 + URL 验证 → 真实北京周末活动
 """
+import asyncio
 import hashlib
 import json
 import logging
@@ -10,9 +11,8 @@ import re
 from datetime import datetime, timedelta
 
 import httpx
-from openai import AsyncOpenAI
 
-from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, TAVILY_API_KEY, CITY_NAME
+from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, TAVILY_API_KEY, CITY_NAME, SAVED_PROXY_ENV
 from db import upsert_activity, count_activities
 
 logger = logging.getLogger(__name__)
@@ -110,7 +110,6 @@ async def _llm_discover_activities(web_context: str, tavily_urls: list[str]) -> 
         return []
 
     sat, sun = _next_weekend()
-    client = AsyncOpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
 
     # 将 Tavily 搜索到的真实 URL 提供给 LLM
     url_hint = ""
@@ -126,20 +125,21 @@ async def _llm_discover_activities(web_context: str, tavily_urls: list[str]) -> 
 1. **只推荐搜索结果中明确提及的**或你**100%确定真实存在**的场馆/展览/活动/电影
 2. **禁止编造**：如果不确定某个活动/展览是否真实存在，不要推荐
 3. 地点必须是真实地址，经纬度必须准确（北京范围：纬度39.4-40.2，经度115.7-117.4）
-4. 覆盖 6 个分类：AI/技术、读书会、电影、景点/展览、美食、活动
-5. 每个分类 2-3 个活动，总共 12-15 个
-6. 电影只推荐搜索结果中提到的当前热映电影
-7. 展览只推荐搜索结果中提到的或你确认的常设展览
-8. 价格要合理真实
-9. **url 字段**：只使用搜索结果中的真实链接，没有就填空字符串，**绝对禁止编造 URL**
-10. **source 字段**：填写真实信息来源网站名（如"豆瓣"、"猫眼"、"大众点评"），source 必须和搜索结果对应
-11. **description**：优先使用搜索结果中的原文描述，不要自行改编
+4. **分类不限**：可以是 AI/技术、读书会、电影、景点、美食、运动、演出、市集、户外、手工、社交等任意有趣的活动
+5. category 字段自由填写，用简短的中文词（如"电影"、"展览"、"脱口秀"、"户外"、"运动"、"市集"、"音乐"等）
+6. 总共推荐 15-20 个活动，越丰富越好
+7. 电影只推荐搜索结果中提到的当前热映电影
+8. 展览只推荐搜索结果中提到的或你确认的常设展览
+9. 价格要合理真实
+10. **url 字段**：只使用搜索结果中的真实链接，没有就填空字符串，**绝对禁止编造 URL**
+11. **source 字段**：填写真实信息来源网站名（如"豆瓣"、"猫眼"、"大众点评"），source 必须和搜索结果对应
+12. **description**：优先使用搜索结果中的原文描述，不要自行改编
 
 ## 返回格式
 严格返回 JSON 数组，每个元素：
 {{
   "title": "活动名称",
-  "category": "AI|读书会|电影|景点|美食|活动",
+  "category": "自由分类词（如电影、展览、运动、脱口秀、户外、市集等）",
   "date": "{sat} 或 {sun}",
   "time": "HH:MM-HH:MM 或 全天",
   "location": "完整地址",
@@ -153,18 +153,42 @@ async def _llm_discover_activities(web_context: str, tavily_urls: list[str]) -> 
 
 只返回 JSON 数组，不要其他文字。"""
 
+    # 通过 curl 调用 LLM（绕过 Python 古老的 LibreSSL）
+    import os
+    payload = json.dumps({
+        "model": LLM_MODEL,
+        "max_tokens": 4096,
+        "temperature": 0.3,
+        "messages": [{"role": "user", "content": prompt}],
+    }, ensure_ascii=False)
+
+    clean_env = {**{k: v for k, v in os.environ.items()
+                    if k.lower() not in ("http_proxy", "https_proxy", "all_proxy")},
+                 **SAVED_PROXY_ENV}
+
+    proc = await asyncio.create_subprocess_exec(
+        "curl", "-s", "--max-time", "120",
+        "-X", "POST", f"{LLM_BASE_URL}/chat/completions",
+        "-H", "Content-Type: application/json",
+        "-H", f"Authorization: Bearer {LLM_API_KEY}",
+        "-d", payload,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env=clean_env,
+    )
+    stdout, stderr = await proc.communicate()
+
+    if proc.returncode != 0:
+        logger.error(f"LLM 活动发现 curl 失败: rc={proc.returncode}")
+        return []
+
     try:
-        resp = await client.chat.completions.create(
-            model=LLM_MODEL,
-            max_tokens=4096,
-            temperature=0.3,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = resp.choices[0].message.content.strip()
+        data = json.loads(stdout.decode())
+        text = data["choices"][0]["message"]["content"].strip()
         result = _parse_llm_json(text)
         return result if isinstance(result, list) else []
-    except Exception as e:
-        logger.error(f"LLM 活动发现失败: {e}")
+    except (json.JSONDecodeError, KeyError, IndexError) as e:
+        logger.error(f"LLM 活动发现解析失败: {e}")
     return []
 
 
@@ -172,15 +196,18 @@ async def run_aggregation():
     """执行一轮完整的活动聚合"""
     logger.info("=== 开始活动聚合 ===")
 
-    # 1. Tavily 搜索真实活动信息 — 垂直搜索策略
+    # 1. Tavily 搜索真实活动信息 — 广覆盖搜索策略
     search_queries = [
-        f"site:dpm.org.cn OR site:gugong.cn {CITY_NAME} 展览 2026",
-        f"site:douban.com {CITY_NAME} 周末活动 展览",
-        f"site:maoyan.com OR site:douban.com 北京 热映电影",
-        f"{CITY_NAME} AI meetup 技术活动 2026年3月",
-        f"site:douban.com {CITY_NAME} 读书会 书店活动",
-        f"{CITY_NAME} 周末 户外 公园 好去处 推荐",
-        f"site:dianping.com {CITY_NAME} 人气美食 推荐",
+        f"{CITY_NAME} 周末 展览 博物馆 开放 2026",
+        f"{CITY_NAME} 周末活动 市集 音乐节 演出 2026年3月",
+        f"site:douban.com {CITY_NAME} 周末活动 同城",
+        f"site:maoyan.com 北京 热映电影 在映",
+        f"{CITY_NAME} AI meetup 技术沙龙 创业活动",
+        f"{CITY_NAME} 读书会 书店活动 文化空间",
+        f"{CITY_NAME} 周末 户外 徒步 骑行 公园 推荐",
+        f"site:dianping.com {CITY_NAME} 人气餐厅 特色美食",
+        f"{CITY_NAME} 脱口秀 话剧 戏剧 演出 本周",
+        f"{CITY_NAME} 运动 羽毛球 攀岩 游泳 周末",
     ]
 
     web_context_parts = []

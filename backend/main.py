@@ -1,18 +1,20 @@
 from __future__ import annotations
 """
 周末去哪玩 — API 入口
-用户画像 · 日程编排 · 对话调整 · 活动聚合
+用户画像 · 日程编排 · 对话调整 · GitHub/SQLite 双模数据层
 """
 import logging
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from config import AGGREGATION_INTERVAL_HOURS, BASE_DIR
-from db import init_db, list_activities, get_activity, count_activities
+from config import AGGREGATION_INTERVAL_HOURS, BASE_DIR, DEFAULT_ADDRESS
+import github_db
+from db import init_db
+from db import list_activities as sqlite_list, get_activity as sqlite_get, count_activities as sqlite_count
 from aggregator import run_aggregation
 from planner import (
     geocode, search_nearby_pois,
@@ -24,17 +26,39 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message
 logger = logging.getLogger(__name__)
 
 scheduler = None
+USE_GITHUB = github_db.is_enabled()
+
+
+# ── 数据层适配 ──
+async def _list_activities(category: str = "", limit: int = 50) -> list[dict]:
+    if USE_GITHUB:
+        return await github_db.list_activities(category, limit)
+    return sqlite_list(category=category, limit=limit)
+
+
+async def _get_activity(activity_id: str) -> dict | None:
+    if USE_GITHUB:
+        return await github_db.get_activity(activity_id)
+    return sqlite_get(activity_id)
+
+
+async def _count_activities() -> int:
+    if USE_GITHUB:
+        return await github_db.count_activities()
+    return sqlite_count()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """启动时初始化 DB + 首次聚合 + 定时任务"""
+    """启动时初始化 + 首次聚合 + 定时任务"""
     init_db()
-    logger.info("数据库初始化完成")
+    mode = "GitHub" if USE_GITHUB else "SQLite"
+    logger.info(f"数据层: {mode}")
 
     import asyncio
-    if count_activities() == 0:
-        logger.info("数据库为空，后台执行首次聚合...")
+    cnt = await _count_activities()
+    if cnt == 0:
+        logger.info("数据为空，后台执行首次聚合...")
         asyncio.create_task(run_aggregation())
 
     try:
@@ -53,11 +77,15 @@ async def lifespan(app: FastAPI):
         scheduler.shutdown()
 
 
-app = FastAPI(title="周末去哪玩", version="2.0.0", lifespan=lifespan)
+app = FastAPI(title="周末去哪玩", version="3.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:4173", "http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:5173", "http://localhost:4173", "http://localhost:3000",
+        "https://*.vercel.app",
+    ],
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -85,7 +113,6 @@ class ChatRequest(BaseModel):
 
 
 def _profile_to_hint(profile: Optional[UserProfile]) -> str:
-    """将用户画像转为 LLM prompt 片段"""
     if not profile:
         return ""
     parts = []
@@ -104,21 +131,14 @@ def _profile_to_hint(profile: Optional[UserProfile]) -> str:
 # ── 路由 ──
 
 @app.get("/api/health")
-def health():
-    return {"status": "ok", "activities_count": count_activities()}
-
-
-@app.get("/api/activities")
-def api_list_activities(
-    category: str = Query("", description="分类筛选"),
-    limit: int = Query(50, ge=1, le=200),
-):
-    return list_activities(category=category, limit=limit)
+async def health():
+    cnt = await _count_activities()
+    return {"status": "ok", "activities_count": cnt, "data_layer": "github" if USE_GITHUB else "sqlite"}
 
 
 @app.get("/api/activities/{activity_id}")
-def api_get_activity(activity_id: str):
-    activity = get_activity(activity_id)
+async def api_get_activity(activity_id: str):
+    activity = await _get_activity(activity_id)
     if not activity:
         raise HTTPException(status_code=404, detail="活动不存在")
     return activity
@@ -126,33 +146,29 @@ def api_get_activity(activity_id: str):
 
 @app.post("/api/plan")
 async def api_create_plan(req: PlanRequest):
-    """以活动为锚点生成配套日程 — 并行加速"""
     import asyncio
 
-    activity = get_activity(req.activity_id)
+    activity = await _get_activity(req.activity_id)
     if not activity:
         raise HTTPException(status_code=404, detail="活动不存在")
 
     profile_hint = _profile_to_hint(req.user_profile)
 
-    # 1. 地理编码（仅在数据库无坐标时调用）
     coords = None
     if activity.get("latitude") and activity.get("longitude"):
         coords = (activity["latitude"], activity["longitude"])
     elif activity.get("location"):
         coords = await geocode(activity["location"])
 
-    # 2. 并行执行：高德 POI + 小红书推荐 + 地铁站（不等前一个完成）
     async def get_pois():
         if not coords:
             return [], [], []
         lat, lng = coords
-        r, s, m = await asyncio.gather(
+        return await asyncio.gather(
             search_nearby_pois(lat, lng, "餐厅", 2000),
             search_nearby_pois(lat, lng, "景点|商圈|公园", 3000),
             search_nearby_pois(lat, lng, "地铁站", 3000),
         )
-        return r, s, m
 
     async def get_xhs():
         return await search_xiaohongshu_restaurants(
@@ -163,7 +179,6 @@ async def api_create_plan(req: PlanRequest):
         get_pois(), get_xhs()
     )
 
-    # 3. LLM 编排日程（含回程规划）
     schedule = await generate_plan(activity, restaurants, spots, xhs_restaurants, profile_hint, metro_stations)
 
     return {
@@ -181,7 +196,7 @@ async def api_create_plan(req: PlanRequest):
 
 @app.post("/api/chat")
 async def api_chat(req: ChatRequest):
-    activity = get_activity(req.activity_id)
+    activity = await _get_activity(req.activity_id)
     if not activity:
         raise HTTPException(status_code=404, detail="活动不存在")
     profile_hint = _profile_to_hint(req.user_profile)
@@ -194,7 +209,92 @@ async def api_chat(req: ChatRequest):
 @app.post("/api/refresh")
 async def api_refresh():
     count = await run_aggregation()
-    return {"refreshed": count, "total": count_activities()}
+    total = await _count_activities()
+    return {"refreshed": count, "total": total}
+
+
+@app.get("/api/categories")
+async def api_categories():
+    """动态获取分类统计"""
+    all_acts = await _list_activities(limit=500)
+    counts: dict[str, int] = {}
+    for a in all_acts:
+        cat = a.get("category", "其他")
+        counts[cat] = counts.get(cat, 0) + 1
+    return [{"name": k, "count": v} for k, v in sorted(counts.items(), key=lambda x: -x[1])]
+
+
+@app.get("/api/config")
+def api_config():
+    return {"default_address": DEFAULT_ADDRESS}
+
+
+@app.get("/api/weather")
+async def api_weather():
+    """获取未来3天天气预报（北京）"""
+    from weather import get_forecast
+    return await get_forecast()
+
+
+# ── 心情 → 分类映射 ──
+MOOD_CATEGORIES: dict[str, list[str]] = {
+    "relax": ["展览", "咖啡", "书店", "公园", "spa"],
+    "social": ["读书会", "运动", "聚会", "脱口秀", "桌游"],
+    "adventure": ["户外", "市集", "探店", "徒步", "骑行"],
+    "quiet": ["展览", "书店", "博物馆", "电影", "音乐"],
+}
+
+
+@app.get("/api/activities")
+async def api_list_activities(
+    category: str = Query("", description="分类筛选"),
+    mood: str = Query("", description="心情筛选"),
+    q: str = Query("", description="关键词搜索"),
+    limit: int = Query(50, ge=1, le=200),
+):
+    all_acts = await _list_activities(limit=500)
+
+    # ── 关键词搜索 ──
+    if q:
+        q_lower = q.lower()
+        all_acts = [a for a in all_acts if
+            q_lower in a.get("title", "").lower() or
+            q_lower in a.get("category", "").lower() or
+            q_lower in a.get("location", "").lower() or
+            q_lower in a.get("description", "").lower()
+        ]
+    elif mood and mood in MOOD_CATEGORIES:
+        keywords = MOOD_CATEGORIES[mood]
+        all_acts = [a for a in all_acts if any(
+            kw in a.get("category", "").lower() or kw in a.get("title", "").lower()
+            for kw in keywords
+        )]
+    elif category and category != "全部":
+        all_acts = [a for a in all_acts if a.get("category") == category]
+
+    all_acts.sort(key=lambda a: a.get("date", ""))
+    return all_acts[:limit]
+
+class UserData(BaseModel):
+    favorites: list[str] = []
+    profile: dict = {}
+
+
+@app.get("/api/user/{name}")
+async def api_get_user(name: str):
+    if not USE_GITHUB:
+        return {"name": name, "favorites": [], "profile": {}}
+    return await github_db.read_user(name)
+
+
+@app.put("/api/user/{name}")
+async def api_update_user(name: str, data: UserData):
+    if not USE_GITHUB:
+        return {"ok": False, "reason": "GitHub 数据层未启用"}
+    ok = await github_db.write_user(name, data.model_dump())
+    if not ok:
+        raise HTTPException(status_code=500, detail="保存失败")
+    return {"ok": True}
 
 
 class NearbyRequest(BaseModel):
@@ -205,10 +305,8 @@ class NearbyRequest(BaseModel):
 
 @app.post("/api/nearby")
 async def api_nearby(req: NearbyRequest):
-    """基于用户定位，推荐附近活动和餐厅"""
     profile_hint = _profile_to_hint(req.user_profile)
 
-    # 1. 高德逆地理编码 → 获取位置名
     location_name = ""
     try:
         from config import AMAP_KEY
@@ -225,13 +323,9 @@ async def api_nearby(req: NearbyRequest):
     except Exception as e:
         logger.warning(f"逆地理编码失败: {e}")
 
-    # 2. 附近餐厅
     restaurants = await search_nearby_pois(req.latitude, req.longitude, "餐厅|快餐|面馆|小吃", 2000)
-
-    # 3. 附近景点/活动
     spots = await search_nearby_pois(req.latitude, req.longitude, "景点|公园|展览|博物馆|商圈", 3000)
 
-    # 4. 小红书餐厅推荐
     xhs_restaurants = []
     if location_name:
         xhs_restaurants = await search_xiaohongshu_restaurants(location_name, profile_hint)

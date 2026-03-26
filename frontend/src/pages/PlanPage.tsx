@@ -1,12 +1,13 @@
 /* ======================================================
- * 日程规划页 — 有机极简风 V4
- * 缓存优先 · 内嵌对话抽屉 · 收藏 · 分享
+ * 日程规划页 — V7 精简版
+ * 缓存优先 · 执行模式 · 内嵌对话 · 收藏 · 分享
  * ====================================================== */
 
 import { useState, useEffect, useRef } from "react"
 import { useParams, useNavigate } from "react-router"
 import { Timeline } from "../components/Timeline"
 import { ChatDrawer } from "../components/ChatDrawer"
+import { ExecutionBar } from "../components/ExecutionBar"
 import { api } from "../api/client"
 import { getCachedPlan, setCachedPlan, clearPlanCache } from "../api/planCache"
 import { formatDate } from "../utils"
@@ -29,6 +30,27 @@ function toggleFavorite(id: string): boolean {
   } catch { return false }
 }
 
+/* ── 规划历史管理 ── */
+function savePlanHistory(plan: Plan) {
+  try {
+    const key = "plan_history"
+    const history = JSON.parse(localStorage.getItem(key) || "[]") as Array<{
+      id: string; title: string; date: string; category: string; location: string; planTime: string
+    }>
+    const entry = {
+      id: plan.activity.id,
+      title: plan.activity.title,
+      date: plan.activity.date,
+      category: plan.activity.category,
+      location: plan.activity.location,
+      planTime: new Date().toISOString(),
+    }
+    const filtered = history.filter((h) => h.id !== entry.id)
+    filtered.unshift(entry)
+    localStorage.setItem(key, JSON.stringify(filtered.slice(0, 30)))
+  } catch { /* quota exceeded — ignore */ }
+}
+
 export function PlanPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -36,6 +58,7 @@ export function PlanPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [chatOpen, setChatOpen] = useState(false)
+  const [executing, setExecuting] = useState(false)
   const [faved, setFaved] = useState(false)
   const [shared, setShared] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
@@ -48,6 +71,7 @@ export function PlanPage() {
     if (cached) {
       setPlan(cached)
       setLoading(false)
+      savePlanHistory(cached)
       return
     }
 
@@ -61,6 +85,7 @@ export function PlanPage() {
       .then((p) => {
         setPlan(p)
         setCachedPlan(id, p)
+        savePlanHistory(p)
       })
       .catch((e) => {
         if (e instanceof DOMException && e.name === "AbortError") return
@@ -73,15 +98,13 @@ export function PlanPage() {
     return () => ctrl.abort()
   }, [id])
 
-  /* ── 分享日程到剪贴板 ── */
   function handleShare() {
     if (!plan) return
-    const text = `📅 ${plan.activity.title}\n${formatDate(plan.activity.date)}${plan.activity.time ? ` ${plan.activity.time}` : ""}\n📍 ${plan.activity.location || ""}\n\n🗓 日程安排：\n${plan.schedule.map((s) => `${s.time} ${s.name} — ${s.reason}`).join("\n")}`
+    const text = `${plan.activity.title}\n${formatDate(plan.activity.date)}${plan.activity.time ? ` ${plan.activity.time}` : ""}\n${plan.activity.location || ""}\n\n日程安排：\n${plan.schedule.map((s) => `${s.time} ${s.name} — ${s.reason}`).join("\n")}`
     navigator.clipboard.writeText(text).then(() => {
       setShared(true)
       setTimeout(() => setShared(false), 2000)
     }).catch(() => {
-      /* fallback: 选择文本 */
       const el = document.createElement("textarea")
       el.value = text
       document.body.appendChild(el)
@@ -93,7 +116,6 @@ export function PlanPage() {
     })
   }
 
-  /* ── 重新规划（清缓存） ── */
   function handleReplan() {
     if (!id) return
     clearPlanCache(id)
@@ -107,6 +129,7 @@ export function PlanPage() {
       .catch((e) => { if (!(e instanceof DOMException)) setError(e.message) })
       .finally(() => { if (!ctrl.signal.aborted) setLoading(false) })
   }
+
   function handleScheduleUpdate(newSchedule: ScheduleItem[]) {
     if (!plan) return
     const updated = { ...plan, schedule: newSchedule }
@@ -114,6 +137,7 @@ export function PlanPage() {
     if (id) setCachedPlan(id, updated)
   }
 
+  /* ── 骨架屏 ── */
   if (loading) {
     return (
       <div className="flex flex-col gap-6">
@@ -173,8 +197,6 @@ export function PlanPage() {
             </svg>
             返回
           </button>
-
-          {/* 收藏按钮 */}
           <button
             onClick={() => id && setFaved(toggleFavorite(id))}
             className="min-h-[44px] min-w-[44px] flex items-center justify-center"
@@ -187,7 +209,7 @@ export function PlanPage() {
         </div>
 
         {/* Hero 卡片 */}
-        <div className="bg-[var(--color-accent)] rounded-2xl p-6 text-white animate-fade-up">
+        <div className="gradient-hero rounded-2xl p-6 text-white animate-fade-up">
           <div className="text-[11px] font-medium text-white/50 tracking-[0.05em] uppercase mb-2">
             {formatDate(activity.date)} · {activity.category}
           </div>
@@ -195,7 +217,7 @@ export function PlanPage() {
             {activity.title}
           </h2>
           <div className="flex flex-col gap-1 text-[13px] text-white/70">
-            {activity.location && <span>📍 {activity.location}</span>}
+            {activity.location && <span>{activity.location}</span>}
             <span>
               {activity.time}{activity.time ? " · " : ""}
               {activity.price === 0 ? "免费" : `¥${activity.price}`}
@@ -299,12 +321,23 @@ export function PlanPage() {
 
         {/* 操作区 */}
         <div className="flex flex-col gap-3 pt-2">
-          <button
-            onClick={() => setChatOpen(true)}
-            className="w-full py-[13px] bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white rounded-xl text-[14px] font-semibold transition-colors duration-200 tracking-[-0.01em] active:scale-[0.98]"
-          >
-            调整日程
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setExecuting(true)}
+              className="flex-[2] py-[13px] gradient-hero text-white rounded-xl text-[14px] font-semibold transition-all duration-200 tracking-[-0.01em] active:scale-[0.98] flex items-center justify-center gap-2 shadow-card"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 11l19-9-9 19-2-8-8-2z" />
+              </svg>
+              开始行程
+            </button>
+            <button
+              onClick={() => setChatOpen(true)}
+              className="flex-1 py-[13px] bg-[var(--color-accent-soft)] text-[var(--color-accent)] rounded-xl text-[14px] font-semibold transition-colors duration-200 tracking-[-0.01em] active:scale-[0.98]"
+            >
+              调整
+            </button>
+          </div>
 
           <div className="flex gap-3">
             <button
@@ -315,7 +348,7 @@ export function PlanPage() {
                   : "bg-[var(--color-bg-dim)] text-[var(--color-t2)] hover:bg-[var(--color-border)]"
               }`}
             >
-              {shared ? "已复制 ✓" : "分享日程"}
+              {shared ? "已复制" : "分享日程"}
             </button>
             <button
               onClick={handleReplan}
@@ -324,24 +357,15 @@ export function PlanPage() {
               重新规划
             </button>
           </div>
-
-          {activity.location && (
-            <a
-              href={`https://uri.amap.com/navigation?to=0,0,${encodeURIComponent(activity.location)}&mode=walk&callnative=1`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full py-[13px] bg-[var(--color-bg-dim)] text-[var(--color-accent)] rounded-xl text-[14px] font-medium text-center flex items-center justify-center gap-2 transition-colors duration-200 hover:bg-[var(--color-border)]"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 11l19-9-9 19-2-8-8-2z" />
-              </svg>
-              导航到活动地点
-            </a>
-          )}
         </div>
       </div>
 
-      {/* 内嵌对话抽屉 — 不跳页！ */}
+      {/* 执行模式浮窗 */}
+      {executing && (
+        <ExecutionBar items={schedule} onExit={() => setExecuting(false)} />
+      )}
+
+      {/* 内嵌对话抽屉 */}
       <ChatDrawer
         activityId={id || ""}
         activity={activity}

@@ -24,7 +24,18 @@ export default defineConfig({
         ],
       },
       workbox: {
+        navigateFallback: '/index.html',
         runtimeCaching: [
+          {
+            urlPattern: /^\/api\/activities/,
+            handler: 'StaleWhileRevalidate',
+            options: { cacheName: 'activities-cache', expiration: { maxEntries: 20, maxAgeSeconds: 1800 } },
+          },
+          {
+            urlPattern: /^\/api\/weather/,
+            handler: 'StaleWhileRevalidate',
+            options: { cacheName: 'weather-cache', expiration: { maxEntries: 5, maxAgeSeconds: 3600 } },
+          },
           {
             urlPattern: /^\/api\//,
             handler: 'NetworkFirst',
@@ -35,6 +46,7 @@ export default defineConfig({
     }),
   ],
   server: {
+    host: true,
     proxy: {
       '/api': 'http://localhost:8000',
     },
