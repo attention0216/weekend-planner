@@ -15,9 +15,9 @@ function userName(): string {
 
 async function request<T>(
   url: string,
-  options?: RequestInit & { timeout?: number },
+  options?: RequestInit & { timeout?: number; retries?: number },
 ): Promise<T> {
-  const { timeout = 60000, ...fetchOptions } = options ?? {}
+  const { timeout = 60000, retries = 1, ...fetchOptions } = options ?? {}
 
   /* ── 合并外部 signal 与超时 signal ── */
   const timeoutCtrl = new AbortController()
@@ -35,19 +35,32 @@ async function request<T>(
   externalSignal?.addEventListener("abort", onExternalAbort)
 
   try {
-    const resp = await fetch(`${BASE}${url}`, {
-      headers: {
-        "Content-Type": "application/json",
-        ...(userName() ? { "X-User-Name": userName() } : {}),
-      },
-      ...fetchOptions,
-      signal: timeoutCtrl.signal,
-    })
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => "")
-      throw new Error(text || `请求失败 (${resp.status})`)
+    let lastError: Error | null = null
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const resp = await fetch(`${BASE}${url}`, {
+          headers: {
+            "Content-Type": "application/json",
+            ...(userName() ? { "X-User-Name": encodeURIComponent(userName()) } : {}),
+          },
+          ...fetchOptions,
+          signal: timeoutCtrl.signal,
+        })
+        if (!resp.ok) {
+          const text = await resp.text().catch(() => "")
+          throw new Error(text || `请求失败 (${resp.status})`)
+        }
+        return await resp.json()
+      } catch (e) {
+        lastError = e as Error
+        if (e instanceof DOMException && e.name === "AbortError") throw e
+        if (attempt < retries) {
+          await new Promise((r) => setTimeout(r, 800 * (attempt + 1)))
+          continue
+        }
+      }
     }
-    return await resp.json()
+    throw lastError!
   } catch (e) {
     if (e instanceof DOMException && e.name === "AbortError") {
       if (externalSignal?.aborted) throw new DOMException("已取消", "AbortError")

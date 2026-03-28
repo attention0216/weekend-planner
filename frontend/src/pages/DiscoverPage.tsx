@@ -332,7 +332,12 @@ export function DiscoverPage() {
           {error && (
             <div className="bg-[#faf2f2] text-[var(--color-error)] text-[13px] rounded-xl p-5 text-center">
               加载失败：{error}
-              <button onClick={() => setCategory(category)} className="block mx-auto mt-3 text-[var(--color-accent)] font-medium">重试</button>
+              <button
+                onClick={() => { setError(""); setLoading(true); setCategory((c) => c === "全部" ? "全部" : c); setTimeout(() => setCategory(category), 0) }}
+                className="block mx-auto mt-3 text-[var(--color-accent)] font-medium"
+              >
+                点击重试
+              </button>
             </div>
           )}
 
