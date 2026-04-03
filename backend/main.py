@@ -45,7 +45,12 @@ async def lifespan(app: FastAPI):
     import asyncio
     if db_count() == 0:
         logger.info("数据为空，后台执行首次聚合...")
-        asyncio.create_task(run_aggregation())
+        async def _safe_aggregation():
+            try:
+                await run_aggregation()
+            except Exception as e:
+                logger.error(f"首次聚合异常: {e}")
+        asyncio.create_task(_safe_aggregation())
 
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -70,8 +75,9 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173", "http://localhost:4173", "http://localhost:3000",
         "https://*.vercel.app",
+        "https://*.hf.space",
     ],
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_origin_regex=r"https://.*\.(vercel\.app|hf\.space)",
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -389,8 +395,12 @@ async def api_create_feedback(req: FeedbackRequest, user_id: str = Depends(get_c
 
 @app.post("/api/refresh")
 async def api_refresh():
-    count = await run_aggregation()
-    return {"refreshed": count, "total": db_count()}
+    try:
+        count = await run_aggregation()
+        return {"refreshed": count, "total": db_count()}
+    except Exception as e:
+        logger.error(f"聚合失败: {e}")
+        raise HTTPException(500, f"聚合失败: {e}")
 
 
 @app.get("/api/config")

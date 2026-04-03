@@ -193,45 +193,52 @@ async def _llm_discover_activities(web_context: str, tavily_urls: list[str]) -> 
 
 
 async def run_aggregation():
-    """执行一轮完整的活动聚合"""
+    """执行一轮完整的活动聚合（全链路 try-catch 确保降级）"""
     logger.info("=== 开始活动聚合 ===")
 
-    # 1. Tavily 搜索真实活动信息 — 广覆盖搜索策略
-    search_queries = [
-        f"{CITY_NAME} 周末 展览 博物馆 开放 2026",
-        f"{CITY_NAME} 周末活动 市集 音乐节 演出 2026年3月",
-        f"site:douban.com {CITY_NAME} 周末活动 同城",
-        f"site:maoyan.com 北京 热映电影 在映",
-        f"{CITY_NAME} AI meetup 技术沙龙 创业活动",
-        f"{CITY_NAME} 读书会 书店活动 文化空间",
-        f"{CITY_NAME} 周末 户外 徒步 骑行 公园 推荐",
-        f"site:dianping.com {CITY_NAME} 人气餐厅 特色美食",
-        f"{CITY_NAME} 脱口秀 话剧 戏剧 演出 本周",
-        f"{CITY_NAME} 运动 羽毛球 攀岩 游泳 周末",
-    ]
+    activities: list[dict] = []
 
-    web_context_parts = []
-    tavily_urls = []
-    for q in search_queries:
-        results = await _tavily_search(q, max_results=3)
-        for r in results:
-            web_context_parts.append(f"[{r['title']}] {r['content']}")
-            if r.get("url"):
-                tavily_urls.append(r["url"])
+    try:
+        # 1. Tavily 搜索真实活动信息
+        search_queries = [
+            f"{CITY_NAME} 周末 展览 博物馆 开放 2026",
+            f"{CITY_NAME} 周末活动 市集 音乐节 演出 2026年4月",
+            f"site:douban.com {CITY_NAME} 周末活动 同城",
+            f"site:maoyan.com 北京 热映电影 在映",
+            f"{CITY_NAME} AI meetup 技术沙龙 创业活动",
+            f"{CITY_NAME} 读书会 书店活动 文化空间",
+            f"{CITY_NAME} 周末 户外 徒步 骑行 公园 推荐",
+            f"site:dianping.com {CITY_NAME} 人气餐厅 特色美食",
+            f"{CITY_NAME} 脱口秀 话剧 戏剧 演出 本周",
+            f"{CITY_NAME} 运动 羽毛球 攀岩 游泳 周末",
+        ]
 
-    web_context = "\n\n".join(web_context_parts) if web_context_parts else "无搜索结果，请基于你对北京的知识推荐。"
+        web_context_parts = []
+        tavily_urls = []
+        for q in search_queries:
+            results = await _tavily_search(q, max_results=3)
+            for r in results:
+                web_context_parts.append(f"[{r['title']}] {r['content']}")
+                if r.get("url"):
+                    tavily_urls.append(r["url"])
 
-    # 2. LLM 生成结构化活动数据（传入真实 URL 供引用）
-    activities = await _llm_discover_activities(web_context, tavily_urls)
+        web_context = "\n\n".join(web_context_parts) if web_context_parts else "无搜索结果，请基于你对北京的知识推荐。"
 
-    # 3. 降级：LLM 也失败时用种子数据
+        # 2. LLM 生成结构化活动数据
+        activities = await _llm_discover_activities(web_context, tavily_urls)
+
+        # 3. 验证 URL 真实性
+        if activities:
+            activities = await _verify_activity_urls(activities)
+
+    except Exception as e:
+        logger.error(f"聚合管道异常，降级到种子数据: {e}")
+
+    # 4. 降级：管道失败或无结果 → 种子数据
     if not activities:
-        logger.warning("LLM 活动发现失败，使用种子数据降级")
+        logger.warning("使用种子数据降级")
         from seed_data import get_seed_activities
         activities = get_seed_activities()
-
-    # 4. 验证 URL 真实性 — HTTP HEAD 检查链接是否可达
-    activities = await _verify_activity_urls(activities)
 
     # 5. 写入数据库（去重）
     saved = 0
