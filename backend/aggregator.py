@@ -262,15 +262,20 @@ async def run_aggregation():
                 "title": a["title"],
                 "category": a.get("category", "活动"),
                 "date": a.get("date", _next_weekend()[0]),
+                "end_date": a.get("end_date"),
                 "time": a.get("time", ""),
                 "location": a.get("location", ""),
                 "latitude": a.get("latitude"),
                 "longitude": a.get("longitude"),
                 "price": a.get("price", 0),
                 "source": a.get("source", ""),
+                "source_type": a.get("source_type", "general"),
                 "url": a.get("url", ""),
                 "image": a.get("image"),
                 "description": a.get("description", ""),
+                "is_time_limited": 1 if a.get("is_time_limited") else 0,
+                "rating": a.get("rating"),
+                "url_verified": 1 if a.get("url_verified") else 0,
             }
             upsert_activity(activity)
             saved += 1
