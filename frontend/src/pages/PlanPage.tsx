@@ -1,11 +1,13 @@
 /* ======================================================
- *  PlanPage — 三次点选 + 日程时间线 + 调整
- *  心情 → 时间 → 同伴 → 生成 → 展示 → 调整
+ *  PlanPage — 三次点选 + SSE 流式时间线 + 调整
+ *  心情 → 时间 → 同伴 → SSE 生成 → 展示 → 调整
  * ====================================================== */
 
 import { useEffect, useState } from 'react'
 import { usePlanStore } from '../stores/planStore'
 import { useUserStore } from '../stores/userStore'
+import { useSSE } from '../hooks/useSSE'
+import { showToast } from '../components/Toast'
 import MoodCard from '../components/MoodCard'
 import PillGroup from '../components/PillGroup'
 import AdjustBar from '../components/AdjustBar'
@@ -21,42 +23,28 @@ export default function PlanPage() {
   const { step, mood, timeSlot, companion, items, generating, planId } = store
   const { setMood, setTimeSlot, setCompanion, addItem, setDone, setGenerating, reset } = store
   const { accessToken } = useUserStore()
+  const { start: startSSE, abort: abortSSE } = useSSE()
 
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const [confirmed, setConfirmed] = useState(false)
 
-  /* 选完同伴后触发生成 */
+  /* ── 选完同伴后 SSE 流式生成 ── */
   useEffect(() => {
     if (step !== 'generating' || !mood || !timeSlot || !companion) return
 
-    const ctrl = new AbortController()
+    startSSE('/api/plan', { mood, time_slot: timeSlot, companion }, {
+      onItem: (_index, item) => addItem(item),
+      onDone: (id) => setDone(id),
+      onError: (msg) => {
+        setGenerating(false)
+        showToast(msg || '生成失败', 'error')
+      },
+    })
 
-    ;(async () => {
-      try {
-        const resp = await fetch('/api/plan', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({ mood, time_slot: timeSlot, companion }),
-          signal: ctrl.signal,
-        })
+    return () => abortSSE()
+  }, [step, mood, timeSlot, companion, addItem, setDone, setGenerating, startSSE, abortSSE])
 
-        if (!resp.ok) throw new Error('生成失败')
-
-        const data = await resp.json()
-        for (const item of data.items || []) addItem(item)
-        setDone(data.id)
-      } catch (e: any) {
-        if (e.name !== 'AbortError') setGenerating(false)
-      }
-    })()
-
-    return () => ctrl.abort()
-  }, [step, mood, timeSlot, companion, accessToken, addItem, setDone, setGenerating])
-
-  /* 调整处理 */
+  /* ── 调整处理 ── */
   async function handleAdjust(action: AdjustAction) {
     if (activeIndex === null || !planId) return
     setActiveIndex(null)
@@ -66,35 +54,37 @@ export default function PlanPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
         body: JSON.stringify({ plan_id: planId, item_index: activeIndex, action }),
       })
       if (resp.ok) {
         const data = await resp.json()
-        if (data.items) {
-          /* 重置 items 并重新填充 */
-          usePlanStore.setState({ items: data.items })
-        }
+        if (data.items) usePlanStore.setState({ items: data.items })
+        showToast('已调整')
       }
     } catch {
-      /* 静默 */
+      showToast('调整失败', 'error')
     }
   }
 
-  /* 确认日程 */
+  /* ── 确认日程 ── */
   async function handleConfirm() {
     if (!planId) return
-    await fetch(`/api/plan/${planId}/confirm`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${accessToken}` },
-    })
-    setConfirmed(true)
+    try {
+      await fetch(`/api/plan/${planId}/confirm`, {
+        method: 'POST',
+        headers: { ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
+      })
+      setConfirmed(true)
+      showToast('已确认，印章已记录到集邮册')
+    } catch {
+      showToast('确认失败', 'error')
+    }
   }
 
   return (
     <section className="animate-fade-up" style={{ paddingTop: 'var(--spacing-6)' }}>
-      {/* 标题 */}
       <h1 style={{ fontSize: 'var(--font-size-display)', fontWeight: 700, color: 'var(--color-ink)' }}>
         {confirmed ? '周末愉快！' : step === 'done' ? '你的周末日程' : '明天想怎么过？'}
       </h1>
@@ -129,7 +119,7 @@ export default function PlanPage() {
         </div>
       )}
 
-      {/* 生成中 */}
+      {/* 生成中骨架 */}
       {step === 'generating' && generating && items.length === 0 && (
         <div className="animate-fade-up" style={{ textAlign: 'center', padding: 'var(--spacing-8) 0' }}>
           <div className="skeleton" style={{ width: 200, height: 16, margin: '0 auto', borderRadius: 8 }} />
@@ -139,9 +129,9 @@ export default function PlanPage() {
         </div>
       )}
 
-      {/* 时间线 */}
+      {/* SSE 流式时间线 */}
       {items.length > 0 && (
-        <div style={{ marginTop: 'var(--spacing-6)' }}>
+        <div style={{ marginTop: 'var(--spacing-6)' }} aria-live="polite">
           {items.map((item, i) => (
             <div key={i} className="animate-slide-up" style={{ animationDelay: `${i * 100}ms` }}>
               {i > 0 && <TimelineLine transitMinutes={item.transit_minutes} />}
@@ -154,7 +144,6 @@ export default function PlanPage() {
             </div>
           ))}
 
-          {/* CTA */}
           {step === 'done' && !confirmed && (
             <div className="animate-scale-in" style={{ marginTop: 'var(--spacing-6)', display: 'flex', gap: 'var(--spacing-3)' }}>
               <button onClick={handleConfirm} className="btn-primary" style={{ flex: 1 }}>
@@ -177,7 +166,6 @@ export default function PlanPage() {
         </div>
       )}
 
-      {/* 调整操作栏 */}
       <AdjustBar
         visible={activeIndex !== null}
         onAction={handleAdjust}
