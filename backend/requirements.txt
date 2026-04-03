@@ -5,3 +5,5 @@ httpx
 apscheduler
 openai
 python-dotenv
+python-jose[cryptography]
+supabase

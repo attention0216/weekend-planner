@@ -30,14 +30,14 @@ AMAP_KEY = os.getenv("AMAP_KEY", "")
 # ── Tavily 搜索 ──
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 
+# ── Supabase 认证 ──
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "")
+
 # ── 城市配置 ──
 CITY_NAME = os.getenv("CITY_NAME", "北京")
 DEFAULT_ADDRESS = os.getenv("DEFAULT_ADDRESS", "北京市昌平区龙锦苑四区12号楼")
 
 # ── 聚合配置 ──
 AGGREGATION_INTERVAL_HOURS = int(os.getenv("AGGREGATION_INTERVAL_HOURS", "6"))
-
-# ── GitHub 数据层（替代 SQLite，免费持久化）──
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
-GITHUB_REPO = os.getenv("GITHUB_REPO", "")
-GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")

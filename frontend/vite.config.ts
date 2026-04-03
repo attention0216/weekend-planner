@@ -13,8 +13,8 @@ export default defineConfig({
         name: '周末去哪玩',
         short_name: '周末',
         description: '以活动为锚点的周末配套规划工具',
-        theme_color: '#111827',
-        background_color: '#f9fafb',
+        theme_color: '#526c4b',
+        background_color: '#fdfefb',
         display: 'standalone',
         start_url: '/',
         icons: [
@@ -35,6 +35,16 @@ export default defineConfig({
             urlPattern: /^\/api\/weather/,
             handler: 'StaleWhileRevalidate',
             options: { cacheName: 'weather-cache', expiration: { maxEntries: 5, maxAgeSeconds: 3600 } },
+          },
+          {
+            urlPattern: /^\/api\/plans/,
+            handler: 'StaleWhileRevalidate',
+            options: { cacheName: 'plans-cache', expiration: { maxEntries: 10, maxAgeSeconds: 86400 } },
+          },
+          {
+            urlPattern: /^\/api\/stamps/,
+            handler: 'StaleWhileRevalidate',
+            options: { cacheName: 'stamps-cache', expiration: { maxEntries: 50, maxAgeSeconds: 86400 } },
           },
           {
             urlPattern: /^\/api\//,
