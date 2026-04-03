@@ -6,7 +6,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://weekend-planner-api.onrender.com/api/:path*"
+      "destination": "https://hxzzzzzzz-weekend-planner.hf.space/api/:path*"
     }
   ]
 }
