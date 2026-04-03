@@ -5,35 +5,8 @@
 
 import { useState, useEffect } from 'react'
 import { useUserStore } from '../stores/userStore'
+import SourceBadge from '../components/SourceBadge'
 import type { Activity } from '../types'
-
-/* ── SourceBadge 内联 ── */
-
-function SourceBadge({ type }: { type: string }) {
-  if (type === 'xiaohongshu') {
-    return (
-      <span style={{
-        fontSize: 'var(--font-size-small)', fontWeight: 500,
-        color: 'var(--color-forest)', background: 'var(--color-warm)',
-        padding: '2px 8px', borderRadius: 'var(--radius-pill)',
-      }}>
-        小红书
-      </span>
-    )
-  }
-  if (type === 'time_limited') {
-    return (
-      <span style={{
-        fontSize: 'var(--font-size-small)', fontWeight: 500,
-        color: 'var(--color-amber)', background: 'var(--color-amber-light)',
-        padding: '2px 8px', borderRadius: 'var(--radius-pill)',
-      }}>
-        限时
-      </span>
-    )
-  }
-  return null
-}
 
 /* ── 分类筛选 ── */
 

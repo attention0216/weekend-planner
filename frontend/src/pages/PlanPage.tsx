@@ -9,6 +9,7 @@ import { useUserStore } from '../stores/userStore'
 import MoodCard from '../components/MoodCard'
 import PillGroup from '../components/PillGroup'
 import AdjustBar from '../components/AdjustBar'
+import SourceBadge from '../components/SourceBadge'
 import type { TimeSlot, Companion, AdjustAction } from '../types'
 
 const TIME_OPTIONS: TimeSlot[] = ['上午', '下午', '全天']
@@ -195,14 +196,14 @@ export default function PlanPage() {
                     </div>
                   )}
                   {item.source_type === 'xiaohongshu' && (
-                    <span style={{
-                      display: 'inline-block', marginTop: 6,
-                      fontSize: 'var(--font-size-small)', fontWeight: 500,
-                      color: 'var(--color-forest)', background: 'var(--color-warm)',
-                      padding: '2px 8px', borderRadius: 'var(--radius-pill)',
-                    }}>
-                      小红书
-                    </span>
+                    <div style={{ marginTop: 6 }}>
+                      <SourceBadge type="xiaohongshu" />
+                    </div>
+                  )}
+                  {item.source_type === 'time_limited' && (
+                    <div style={{ marginTop: 6 }}>
+                      <SourceBadge type="time_limited" />
+                    </div>
                   )}
                 </div>
               </button>

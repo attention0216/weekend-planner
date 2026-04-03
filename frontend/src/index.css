@@ -186,6 +186,26 @@ body {
   border-color: var(--color-forest);
 }
 
+/* ── 标记徽章 ─────────────────────────────────────────────── */
+
+.badge {
+  display: inline-block;
+  font-size: var(--font-size-small);
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+}
+
+.badge-xhs {
+  color: var(--color-forest);
+  background: var(--color-warm);
+}
+
+.badge-limited {
+  color: var(--color-amber);
+  background: var(--color-amber-light, rgba(212, 168, 83, 0.12));
+}
+
 /* ── 骨架加载 ──────────────────────────────────────────────── */
 
 .skeleton {
