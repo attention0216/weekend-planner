@@ -11,6 +11,7 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from config import AGGREGATION_INTERVAL_HOURS, BASE_DIR, DEFAULT_ADDRESS
@@ -312,7 +313,18 @@ async def api_create_plan(req: PlanRequest, user_id: str = Depends(get_current_u
         "confirmed": 0,
     })
 
-    return {"id": plan_id, "items": schedule}
+    async def sse_generator():
+        """逐项推送日程 + 完成信号"""
+        for i, item in enumerate(schedule):
+            yield f"data: {json.dumps({'type': 'item', 'index': i, 'item': item}, ensure_ascii=False)}\n\n"
+            await asyncio.sleep(0.15)  # 视觉流式效果
+        yield f"data: {json.dumps({'type': 'done', 'planId': plan_id}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        sse_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/api/plans")
