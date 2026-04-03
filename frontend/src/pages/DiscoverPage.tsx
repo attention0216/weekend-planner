@@ -4,7 +4,7 @@
  * ====================================================== */
 
 import { useState, useEffect } from 'react'
-import { useUserStore } from '../stores/userStore'
+import { api } from '../api/client'
 import SourceBadge from '../components/SourceBadge'
 import type { Activity } from '../types'
 
@@ -34,7 +34,6 @@ function CategoryBar({ categories, active, onSelect }: {
 /* ── 主页面 ── */
 
 export default function DiscoverPage() {
-  const { accessToken } = useUserStore()
   const [activities, setActivities] = useState<Activity[]>([])
   const [categories, setCategories] = useState<string[]>([])
   const [activeCategory, setActiveCategory] = useState('全部')
@@ -42,22 +41,19 @@ export default function DiscoverPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   useEffect(() => {
-    const headers: Record<string, string> = {}
-    if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`
+    const ctrl = new AbortController()
 
     Promise.all([
-      fetch('/api/activities?' + new URLSearchParams(
-        activeCategory !== '全部' ? { category: activeCategory } : {}
-      ), { headers }).then(r => r.json()),
-      categories.length === 0
-        ? fetch('/api/categories', { headers }).then(r => r.json())
-        : Promise.resolve(null),
+      api.listActivities({ category: activeCategory }, ctrl.signal),
+      categories.length === 0 ? api.categories() : Promise.resolve(null),
     ]).then(([acts, cats]) => {
       setActivities(acts)
-      if (cats) setCategories(cats.map((c: any) => c.name))
+      if (cats) setCategories(cats.map(c => c.name))
       setLoading(false)
     }).catch(() => setLoading(false))
-  }, [activeCategory, accessToken, categories.length])
+
+    return () => ctrl.abort()
+  }, [activeCategory, categories.length])
 
   return (
     <section className="animate-fade-up" style={{ paddingTop: 'var(--spacing-6)' }}>

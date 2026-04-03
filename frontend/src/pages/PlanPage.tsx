@@ -5,8 +5,8 @@
 
 import { useEffect, useState } from 'react'
 import { usePlanStore } from '../stores/planStore'
-import { useUserStore } from '../stores/userStore'
 import { useSSE } from '../hooks/useSSE'
+import { api } from '../api/client'
 import { showToast } from '../components/Toast'
 import MoodCard from '../components/MoodCard'
 import PillGroup from '../components/PillGroup'
@@ -22,7 +22,6 @@ export default function PlanPage() {
   const store = usePlanStore()
   const { step, mood, timeSlot, companion, items, generating, planId } = store
   const { setMood, setTimeSlot, setCompanion, addItem, setDone, setGenerating, reset } = store
-  const { accessToken } = useUserStore()
   const { start: startSSE, abort: abortSSE } = useSSE()
 
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
@@ -50,19 +49,9 @@ export default function PlanPage() {
     setActiveIndex(null)
 
     try {
-      const resp = await fetch('/api/plan/adjust', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        },
-        body: JSON.stringify({ plan_id: planId, item_index: activeIndex, action }),
-      })
-      if (resp.ok) {
-        const data = await resp.json()
-        if (data.items) usePlanStore.setState({ items: data.items })
-        showToast('已调整')
-      }
+      const data = await api.adjustPlan(planId, activeIndex, action)
+      if (data.items) usePlanStore.setState({ items: data.items })
+      showToast('已调整')
     } catch {
       showToast('调整失败', 'error')
     }
@@ -72,10 +61,7 @@ export default function PlanPage() {
   async function handleConfirm() {
     if (!planId) return
     try {
-      await fetch(`/api/plan/${planId}/confirm`, {
-        method: 'POST',
-        headers: { ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
-      })
+      await api.confirmPlan(planId)
       setConfirmed(true)
       showToast('已确认，印章已记录到集邮册')
     } catch {

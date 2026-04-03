@@ -5,7 +5,9 @@
 
 import { useState, useEffect } from 'react'
 import { useUserStore } from '../stores/userStore'
+import { api } from '../api/client'
 import { signOut } from '../hooks/useAuth'
+import { showToast } from '../components/Toast'
 import PillGroup from '../components/PillGroup'
 
 const DIET_OPTIONS = ['无忌口', '不吃辣', '海鲜过敏', '素食']
@@ -18,14 +20,10 @@ export default function ProfilePage() {
   const [budget, setBudget] = useState(profile?.budget || '50-100')
   const [social, setSocial] = useState(profile?.social || '一个人')
   const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     if (!profile && userId) {
-      fetch('/api/profile', {
-        headers: { 'Authorization': `Bearer ${useUserStore.getState().accessToken}` },
-      })
-        .then(r => r.json())
+      api.getProfile()
         .then(data => {
           setProfile(data)
           if (data.diet?.[0]) setDiet(data.diet[0])
@@ -39,18 +37,10 @@ export default function ProfilePage() {
   async function handleSave() {
     setSaving(true)
     try {
-      await fetch('/api/profile', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${useUserStore.getState().accessToken}`,
-        },
-        body: JSON.stringify({ name: profile?.name || '', diet: [diet], budget, social }),
-      })
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
+      await api.updateProfile({ name: profile?.name || '', diet: [diet], budget, social })
+      showToast('已保存')
     } catch {
-      /* 静默 */
+      showToast('保存失败', 'error')
     } finally {
       setSaving(false)
     }
@@ -62,28 +52,24 @@ export default function ProfilePage() {
         我的
       </h1>
 
-      {/* 饮食偏好 */}
       <div className="card" style={{ marginTop: 'var(--spacing-6)' }}>
         <h2 style={{ fontSize: 'var(--font-size-h3)', fontWeight: 600 }}>饮食偏好</h2>
         <PillGroup options={DIET_OPTIONS} value={diet} onChange={setDiet} compact />
       </div>
 
-      {/* 预算范围 */}
       <div className="card" style={{ marginTop: 'var(--spacing-4)' }}>
         <h2 style={{ fontSize: 'var(--font-size-h3)', fontWeight: 600 }}>人均预算</h2>
         <PillGroup options={BUDGET_OPTIONS} value={budget} onChange={setBudget} compact />
       </div>
 
-      {/* 社交场景 */}
       <div className="card" style={{ marginTop: 'var(--spacing-4)' }}>
         <h2 style={{ fontSize: 'var(--font-size-h3)', fontWeight: 600 }}>社交场景</h2>
         <PillGroup options={SOCIAL_OPTIONS} value={social} onChange={setSocial} compact />
       </div>
 
-      {/* 保存 */}
       <div style={{ marginTop: 'var(--spacing-6)', display: 'flex', gap: 'var(--spacing-3)' }}>
         <button onClick={handleSave} disabled={saving} className="btn-primary" style={{ flex: 1 }}>
-          {saved ? '已保存' : saving ? '保存中...' : '保存设置'}
+          {saving ? '保存中...' : '保存设置'}
         </button>
         <button onClick={signOut} className="btn-ghost" style={{ color: 'var(--color-red)' }}>
           退出

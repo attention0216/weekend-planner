@@ -4,7 +4,8 @@
  * ====================================================== */
 
 import { useState, useEffect } from 'react'
-import { useUserStore } from '../stores/userStore'
+import { api } from '../api/client'
+import { showToast } from '../components/Toast'
 import PillGroup from '../components/PillGroup'
 import type { Stamp } from '../types'
 
@@ -12,12 +13,10 @@ const TYPE_OPTIONS = ['展览', '美食', '户外', '购物', '文化', '其他'
 const AREA_OPTIONS = ['朝阳', '海淀', '东城', '西城', '丰台', '其他']
 
 export default function StampPage() {
-  const { accessToken } = useUserStore()
   const [stamps, setStamps] = useState<Stamp[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
 
-  /* 打卡表单 */
   const [type, setType] = useState('展览')
   const [area, setArea] = useState('朝阳')
   const [note, setNote] = useState('')
@@ -25,32 +24,22 @@ export default function StampPage() {
   const [justStamped, setJustStamped] = useState(false)
 
   function loadStamps() {
-    fetch('/api/stamps', {
-      headers: { 'Authorization': `Bearer ${accessToken}` },
-    })
-      .then(r => r.json())
+    api.listStamps()
       .then(data => { setStamps(data); setLoading(false) })
       .catch(() => setLoading(false))
   }
 
-  useEffect(() => { loadStamps() }, [accessToken])
+  useEffect(() => { loadStamps() }, [])
 
   async function handleSubmit() {
     setSubmitting(true)
     try {
-      await fetch('/api/stamps', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ activity_type: type, area, note }),
-      })
+      await api.createStamp({ activity_type: type, area, note })
       setJustStamped(true)
       setTimeout(() => { setJustStamped(false); setShowForm(false); setNote('') }, 1500)
       loadStamps()
     } catch {
-      /* 静默 */
+      showToast('打卡失败', 'error')
     } finally {
       setSubmitting(false)
     }
@@ -72,7 +61,6 @@ export default function StampPage() {
         </button>
       </div>
 
-      {/* 打卡表单 */}
       {showForm && (
         <div className="card-paper animate-slide-up" style={{ marginTop: 'var(--spacing-4)' }}>
           {justStamped ? (
@@ -93,6 +81,7 @@ export default function StampPage() {
                 onChange={e => setNote(e.target.value)}
                 placeholder="记点什么...（可选）"
                 rows={2}
+                aria-label="打卡感想"
                 style={{
                   width: '100%', marginTop: 'var(--spacing-4)',
                   padding: 'var(--spacing-3)',
@@ -117,7 +106,6 @@ export default function StampPage() {
         </div>
       )}
 
-      {/* 印章列表 */}
       {loading ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-3)', marginTop: 'var(--spacing-4)' }}>
           {[1, 2, 3].map(i => (
