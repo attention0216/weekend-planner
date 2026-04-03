@@ -6,6 +6,7 @@
 import { useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { useUserStore } from '../stores/userStore'
+import { api } from '../api/client'
 
 /* ── Supabase 客户端（单例）── */
 
@@ -19,19 +20,36 @@ export const supabase = (supabaseUrl && supabaseKey)
 /* ── Hook ── */
 
 export function useAuth() {
-  const { setAuth, clearAuth, setLoading } = useUserStore()
+  const { setAuth, clearAuth, setLoading, setProfile } = useUserStore()
+
+  /* 认证成功后拉取画像 */
+  function afterAuth(userId: string, token: string) {
+    setAuth(userId, token)
+    api.getProfile()
+      .then(profile => {
+        setProfile(profile)
+        /* 新用户画像为空 → 触发引导 */
+        if (!profile.diet?.length && !profile.budget) {
+          useUserStore.setState({ needsOnboarding: true })
+        }
+      })
+      .catch(() => {
+        /* 画像不存在 → 新用户 */
+        useUserStore.setState({ needsOnboarding: true, profileReady: true })
+      })
+  }
 
   useEffect(() => {
     if (!supabase) {
       /* 开发模式：无 Supabase 配置时自动放行 */
-      setAuth('dev-user', 'dev-token')
+      afterAuth('dev-user', 'dev-token')
       return
     }
 
     /* 初始会话检查 */
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        setAuth(session.user.id, session.access_token)
+        afterAuth(session.user.id, session.access_token)
       } else {
         setLoading(false)
       }
@@ -40,7 +58,7 @@ export function useAuth() {
     /* 监听状态变化 */
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
-        setAuth(session.user.id, session.access_token)
+        afterAuth(session.user.id, session.access_token)
       } else {
         clearAuth()
       }

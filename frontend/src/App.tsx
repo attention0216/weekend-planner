@@ -7,6 +7,7 @@ import { Component, type ReactNode } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router'
 import BottomNav from './components/BottomNav'
 import Toast from './components/Toast'
+import OnboardingOverlay from './components/OnboardingOverlay'
 import { useAuth } from './hooks/useAuth'
 import { useUserStore } from './stores/userStore'
 import DiscoverPage from './pages/DiscoverPage'
@@ -79,6 +80,7 @@ export default function App() {
           </main>
           <BottomNav />
           <Toast />
+          <OnboardingOverlay />
         </div>
       </BrowserRouter>
     </ErrorBoundary>
