@@ -9,7 +9,8 @@ import { useUserStore } from '../stores/userStore'
 import MoodCard from '../components/MoodCard'
 import PillGroup from '../components/PillGroup'
 import AdjustBar from '../components/AdjustBar'
-import SourceBadge from '../components/SourceBadge'
+import TimelineNode from '../components/TimelineNode'
+import TimelineLine from '../components/TimelineLine'
 import type { TimeSlot, Companion, AdjustAction } from '../types'
 
 const TIME_OPTIONS: TimeSlot[] = ['上午', '下午', '全天']
@@ -143,70 +144,13 @@ export default function PlanPage() {
         <div style={{ marginTop: 'var(--spacing-6)' }}>
           {items.map((item, i) => (
             <div key={i} className="animate-slide-up" style={{ animationDelay: `${i * 100}ms` }}>
-              {/* 连接线 */}
-              {i > 0 && (
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 'var(--spacing-3)',
-                  padding: 'var(--spacing-1) 0 var(--spacing-1) 19px',
-                }}>
-                  <div style={{
-                    width: 2, height: 32, background: 'var(--color-forest)',
-                    opacity: 0.3, borderRadius: 1,
-                  }} />
-                  {item.transit_minutes && (
-                    <span style={{ fontSize: 'var(--font-size-small)', color: 'var(--color-muted)' }}>
-                      {item.transit_minutes} 分钟
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {/* 节点 — 点击呼出 AdjustBar */}
-              <button
-                onClick={() => step === 'done' && !confirmed && item.type !== 'commute' && setActiveIndex(i)}
-                className="card-paper"
-                style={{
-                  display: 'flex', gap: 'var(--spacing-3)',
-                  alignItems: 'flex-start', width: '100%',
-                  textAlign: 'left', cursor: step === 'done' && !confirmed ? 'pointer' : 'default',
-                  border: activeIndex === i ? '2px solid var(--color-forest)' : '2px solid transparent',
-                  transition: 'border-color 0.2s',
-                }}
-              >
-                <div style={{
-                  width: 40, height: 40, borderRadius: '50%',
-                  background: item.type === 'commute' ? 'var(--color-warm)' : 'var(--color-forest)',
-                  color: item.type === 'commute' ? 'var(--color-ink)' : 'white',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 'var(--font-size-caption)', fontWeight: 600,
-                  flexShrink: 0,
-                }}>
-                  {item.time?.slice(0, 5) || '·'}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: 'var(--font-size-body)' }}>{item.name}</div>
-                  {item.location && (
-                    <div style={{ fontSize: 'var(--font-size-caption)', color: 'var(--color-muted)', marginTop: 2 }}>
-                      {item.location}
-                    </div>
-                  )}
-                  {item.reason && (
-                    <div style={{ fontSize: 'var(--font-size-caption)', color: 'var(--color-ink-light)', marginTop: 4 }}>
-                      {item.reason}
-                    </div>
-                  )}
-                  {item.source_type === 'xiaohongshu' && (
-                    <div style={{ marginTop: 6 }}>
-                      <SourceBadge type="xiaohongshu" />
-                    </div>
-                  )}
-                  {item.source_type === 'time_limited' && (
-                    <div style={{ marginTop: 6 }}>
-                      <SourceBadge type="time_limited" />
-                    </div>
-                  )}
-                </div>
-              </button>
+              {i > 0 && <TimelineLine transitMinutes={item.transit_minutes} />}
+              <TimelineNode
+                item={item}
+                active={activeIndex === i}
+                editable={step === 'done' && !confirmed}
+                onTap={() => setActiveIndex(i)}
+              />
             </div>
           ))}
 
