@@ -12,7 +12,11 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+
+from models import (
+    ProfileUpdate, PlanRequest, AdjustRequest, StampCreate,
+    FeedbackRequest, ChatRequest, NearbyRequest,
+)
 
 from config import AGGREGATION_INTERVAL_HOURS, BASE_DIR, DEFAULT_ADDRESS
 from auth import get_current_user, optional_user
@@ -82,39 +86,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-# ── 请求模型 ──
-
-class ProfileUpdate(BaseModel):
-    name: str = ""
-    diet: list[str] = []
-    budget: str = "适中"
-    social: str = "一个人"
-
-class PlanRequest(BaseModel):
-    mood: str
-    time_slot: str
-    companion: str
-
-class AdjustRequest(BaseModel):
-    plan_id: str
-    item_index: int
-    action: str  # swap | remove | closer | cheaper
-
-class StampCreate(BaseModel):
-    activity_type: str
-    area: str
-    note: str = ""
-
-class FeedbackRequest(BaseModel):
-    plan_id: str
-    item_index: int
-
-class ChatRequest(BaseModel):
-    activity_id: str
-    message: str
-    current_plan: list[dict] = []
 
 
 # ── 心情 → 分类映射 ──
@@ -401,6 +372,14 @@ async def api_create_stamp(req: StampCreate, user_id: str = Depends(get_current_
 async def api_create_feedback(req: FeedbackRequest, user_id: str = Depends(get_current_user)):
     save_feedback(user_id, req.plan_id, req.item_index)
     return {"ok": True}
+
+
+# ── 附近推荐 ──
+
+@app.post("/api/nearby")
+async def api_nearby(req: NearbyRequest, user_id: str = Depends(get_current_user)):
+    pois = await search_nearby_pois(req.lat, req.lng, req.keyword, req.radius)
+    return {"pois": pois}
 
 
 # ── 聚合 ──
