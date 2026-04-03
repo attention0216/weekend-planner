@@ -3,6 +3,9 @@
   "outputDirectory": "frontend/dist",
   "framework": null,
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://weekend-planner-api.onrender.com/api/:path*" }
+    {
+      "source": "/api/:path*",
+      "destination": "https://weekend-planner-api.onrender.com/api/:path*"
+    }
   ]
 }
