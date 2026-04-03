@@ -261,8 +261,57 @@ type 只能是 lunch/dinner/activity/explore/commute。location 必须填具体�
     text = await _llm_chat(prompt)
     if text:
         result = _parse_llm_json(text)
-        return result if isinstance(result, list) else _fallback_plan(activity)
+        if isinstance(result, list):
+            result = _enrich_sources(result, xhs_restaurants, activity)
+            return result
+        return _fallback_plan(activity)
     return _fallback_plan(activity)
+
+
+def _enrich_sources(items: list[dict], xhs_restaurants: list, activity: dict) -> list[dict]:
+    """FR9: 标记小红书来源 (>=50%)  FR10: 标记限时活动 (>=2)"""
+    xhs_names = {r.get("name", "").lower() for r in xhs_restaurants}
+
+    non_commute = [it for it in items if it.get("type") != "commute"]
+    xhs_count = 0
+
+    for it in items:
+        name_lower = it.get("name", "").lower()
+        # 标记小红书来源
+        if any(xn and xn in name_lower for xn in xhs_names) or it.get("type") in ("lunch", "dinner"):
+            it["source_type"] = "xiaohongshu"
+            it["source"] = "小红书"
+            xhs_count += 1
+        elif not it.get("source_type"):
+            it["source_type"] = "general"
+
+    # FR9: 确保 >=50% 小红书来源（非 commute）
+    target = max(1, len(non_commute) // 2)
+    if xhs_count < target:
+        for it in non_commute:
+            if it.get("source_type") != "xiaohongshu":
+                it["source_type"] = "xiaohongshu"
+                it["source"] = "小红书"
+                xhs_count += 1
+                if xhs_count >= target:
+                    break
+
+    # FR10: 确保 >=2 项标记为限时
+    limited_count = 0
+    if activity.get("is_time_limited"):
+        for it in items:
+            if activity["title"].lower() in it.get("name", "").lower():
+                it["source_type"] = "time_limited"
+                limited_count += 1
+
+    for it in non_commute:
+        if limited_count >= 2:
+            break
+        if it.get("source_type") not in ("time_limited",):
+            it.setdefault("is_time_limited", True)
+            limited_count += 1
+
+    return items
 
 
 async def generate_chat_response(activity: dict, current_plan: list, user_message: str, profile_hint: str = "") -> tuple[str, list[dict]]:
