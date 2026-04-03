@@ -93,14 +93,21 @@ async def _verify_url(url: str) -> bool:
 
 
 async def _verify_activity_urls(activities: list[dict]) -> list[dict]:
-    """批量验证活动 URL，不可达的清空 url 字段"""
+    """批量验证活动 URL，标记 url_verified + url_verified_at"""
     import asyncio
+    from datetime import datetime
     tasks = [_verify_url(a.get("url", "")) for a in activities]
     results = await asyncio.gather(*tasks, return_exceptions=True)
+    now = datetime.now().isoformat()
     for a, ok in zip(activities, results):
-        if not ok or isinstance(ok, Exception):
+        if ok and not isinstance(ok, Exception):
+            a["url_verified"] = True
+            a["url_verified_at"] = now
+        else:
             a["url"] = ""
-            logger.info(f"URL 验证失败，已清除: [{a.get('title')}] {a.get('url', '')}")
+            a["url_verified"] = False
+            a["url_verified_at"] = now
+            logger.info(f"URL 验证失败，已清除: [{a.get('title')}]")
     return activities
 
 
