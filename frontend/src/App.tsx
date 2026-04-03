@@ -6,6 +6,7 @@
 import { Component, type ReactNode } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router'
 import BottomNav from './components/BottomNav'
+import Toast from './components/Toast'
 import { useAuth } from './hooks/useAuth'
 import { useUserStore } from './stores/userStore'
 import DiscoverPage from './pages/DiscoverPage'
@@ -77,6 +78,7 @@ export default function App() {
             </Routes>
           </main>
           <BottomNav />
+          <Toast />
         </div>
       </BrowserRouter>
     </ErrorBoundary>
